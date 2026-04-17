@@ -1,0 +1,198 @@
+from __future__ import annotations
+
+import argparse
+import json
+import random
+from collections import defaultdict
+from pathlib import Path
+from typing import Any
+import tkinter as tk
+
+from PIL import Image, ImageDraw, ImageTk
+
+
+def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) -> None:
+    if not images:
+        return
+
+    root = tk.Tk()
+    root.title("COCO Bounding Box Viewer")
+
+    image_label = tk.Label(root)
+    image_label.pack(padx=8, pady=8, fill="both", expand=True)
+
+    info_label = tk.Label(root)
+    info_label.pack(padx=8, pady=(0, 8))
+
+    current_index = 0
+    resize_job: str | None = None
+
+    def _fit_to_window(pil_image: Image.Image) -> Image.Image:
+        available_width = image_label.winfo_width()
+        available_height = image_label.winfo_height()
+
+        if available_width <= 1 or available_height <= 1:
+            available_width = max(root.winfo_width() - 24, 1)
+            available_height = max(root.winfo_height() - 120, 1)
+
+        original_width, original_height = pil_image.size
+        scale = min(available_width / original_width, available_height / original_height)
+        scale = max(scale, 0.01)
+
+        resized_width = max(int(original_width * scale), 1)
+        resized_height = max(int(original_height * scale), 1)
+        return pil_image.resize((resized_width, resized_height), Image.Resampling.LANCZOS)
+
+    def _render(index: int) -> None:
+        pil_image = _fit_to_window(images[index])
+        photo = ImageTk.PhotoImage(pil_image)
+        image_label.configure(image=photo)
+        image_label.image = photo
+        info_label.configure(text=f"{index + 1}/{len(images)} - {titles[index]}")
+
+    def _next_image(_event: Any | None = None) -> None:
+        nonlocal current_index
+        current_index = (current_index + 1) % len(images)
+        _render(current_index)
+
+    def _prev_image(_event: Any | None = None) -> None:
+        nonlocal current_index
+        current_index = (current_index - 1) % len(images)
+        _render(current_index)
+
+    button_row = tk.Frame(root)
+    button_row.pack(padx=8, pady=(0, 8))
+    tk.Button(button_row, text="Previous", command=_prev_image, width=12).pack(side="left", padx=4)
+    tk.Button(button_row, text="Next", command=_next_image, width=12).pack(side="left", padx=4)
+
+    root.bind("<Left>", _prev_image)
+    root.bind("<Right>", _next_image)
+    root.bind("p", _prev_image)
+    root.bind("n", _next_image)
+    root.bind("q", lambda _event: root.destroy())
+
+    def _on_resize(_event: Any) -> None:
+        nonlocal resize_job
+        if resize_job is not None:
+            root.after_cancel(resize_job)
+        resize_job = root.after(60, _render, current_index)
+
+    root.bind("<Configure>", _on_resize)
+
+    _render(current_index)
+    root.mainloop()
+
+
+def show_sample_images_with_bboxes(
+    annotations_path: str | Path,
+    images_dir: str | Path,
+    num_images: int = 6,
+    seed: int = 42,
+    show: bool = True,
+) -> list[Image.Image]:
+    """Load a COCO-style annotation file and visualize sampled images with bounding boxes.
+
+    Args:
+        annotations_path: Path to a COCO-style JSON file.
+        images_dir: Directory that contains the image files referenced by `file_name`.
+        num_images: Number of images to sample and draw.
+        seed: Random seed for reproducible sampling.
+        show: If True, open one window to browse rendered images with next/previous controls.
+
+    Returns:
+        List of PIL images with rendered bounding boxes and category labels.
+    """
+    annotations_path = Path(annotations_path)
+    images_dir = Path(images_dir)
+
+    with annotations_path.open("r", encoding="utf-8") as f:
+        coco = json.load(f)
+
+    images: list[dict[str, Any]] = coco.get("images", [])
+    annotations: list[dict[str, Any]] = coco.get("annotations", [])
+    categories: list[dict[str, Any]] = coco.get("categories", [])
+
+    if not images:
+        raise ValueError(f"No images found in annotation file: {annotations_path}")
+
+    categories_by_id = {cat["id"]: cat.get("name", str(cat["id"])) for cat in categories}
+
+    annotations_by_image_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for ann in annotations:
+        annotations_by_image_id[ann["image_id"]].append(ann)
+
+    rng = random.Random(seed)
+    sample_count = min(num_images, len(images))
+    sampled_images = rng.sample(images, k=sample_count)
+
+    rendered_images: list[Image.Image] = []
+    sampled_titles: list[str] = []
+    for image_info in sampled_images:
+        image_path = images_dir / image_info["file_name"]
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image referenced in annotations does not exist: {image_path}")
+
+        image = Image.open(image_path).convert("RGB")
+        drawer = ImageDraw.Draw(image)
+
+        for ann in annotations_by_image_id.get(image_info["id"], []):
+            x, y, w, h = ann["bbox"]
+            x2 = x + w
+            y2 = y + h
+            category_name = categories_by_id.get(ann["category_id"], str(ann["category_id"]))
+
+            drawer.rectangle([(x, y), (x2, y2)], outline="red", width=2)
+            drawer.text((x + 2, max(0, y - 14)), category_name, fill="yellow")
+
+        rendered_images.append(image)
+        sampled_titles.append(str(image_info["file_name"]))
+
+    if show:
+        _show_images_in_single_window(rendered_images, sampled_titles)
+
+    return rendered_images
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Show sample images with COCO bounding boxes.")
+    parser.add_argument(
+        "--annotations",
+        type=Path,
+        default=Path("data/annotations/objects/annotations_val.json"),
+        help="Path to COCO JSON annotations file.",
+    )
+    parser.add_argument(
+        "--images-dir",
+        type=Path,
+        default=Path("data/images/val"),
+        help="Directory containing dataset images.",
+    )
+    parser.add_argument("--num-images", type=int, default=6, help="How many random images to draw.")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible sampling.")
+    parser.add_argument(
+        "--no-show",
+        action="store_true",
+        help="Render in memory only (useful for quick validation in CI/headless environments).",
+    )
+    return parser
+
+
+def main() -> None:
+    parser = _build_parser()
+    args = parser.parse_args()
+    rendered = show_sample_images_with_bboxes(
+        annotations_path=args.annotations,
+        images_dir=args.images_dir,
+        num_images=args.num_images,
+        seed=args.seed,
+        show=not args.no_show,
+    )
+    print(f"Rendered {len(rendered)} image(s) with bounding boxes.")
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
