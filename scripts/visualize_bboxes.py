@@ -8,7 +8,26 @@ from pathlib import Path
 from typing import Any
 import tkinter as tk
 
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageDraw, ImageFont, ImageTk
+
+
+def _load_label_font(font_size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    candidate_paths = [
+        Path(r"C:\Windows\Fonts\arial.ttf"),
+        Path(r"C:\Windows\Fonts\segoeui.ttf"),
+        Path(r"C:\Windows\Fonts\tahoma.ttf"),
+        Path(ImageFont.__file__).resolve().parent / "fonts" / "DejaVuSans.ttf",
+        Path(ImageFont.__file__).resolve().parent / "DejaVuSans.ttf",
+    ]
+
+    for font_path in candidate_paths:
+        if font_path.exists():
+            try:
+                return ImageFont.truetype(str(font_path), size=font_size)
+            except OSError:
+                continue
+
+    return ImageFont.load_default()
 
 
 def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) -> None:
@@ -103,8 +122,9 @@ def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) 
 def show_sample_images_with_bboxes(
     annotations_path: str | Path,
     images_dir: str | Path,
-    num_images: int = 6,
+    num_images: int = 50,
     seed: int = 42,
+    label_font_size: int = 24,
     show: bool = True,
 ) -> list[Image.Image]:
     """Load a COCO-style annotation file and visualize sampled images with bounding boxes.
@@ -114,6 +134,7 @@ def show_sample_images_with_bboxes(
         images_dir: Directory that contains the image files referenced by `file_name`.
         num_images: Number of images to sample and draw.
         seed: Random seed for reproducible sampling.
+        label_font_size: Font size for category labels drawn on top of the boxes.
         show: If True, open one window to browse rendered images with next/previous controls.
 
     Returns:
@@ -133,6 +154,9 @@ def show_sample_images_with_bboxes(
         raise ValueError(f"No images found in annotation file: {annotations_path}")
 
     categories_by_id = {cat["id"]: cat.get("name", str(cat["id"])) for cat in categories}
+    label_font = _load_label_font(label_font_size)
+    label_padding = max(4, label_font_size // 4)
+    outline_width = max(2, label_font_size // 12)
 
     annotations_by_image_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for ann in annotations:
@@ -158,8 +182,29 @@ def show_sample_images_with_bboxes(
             y2 = y + h
             category_name = categories_by_id.get(ann["category_id"], str(ann["category_id"]))
 
-            drawer.rectangle([(x, y), (x2, y2)], outline="red", width=2)
-            drawer.text((x + 2, max(0, y - 14)), category_name, fill="yellow")
+            drawer.rectangle([(x, y), (x2, y2)], outline="red", width=outline_width)
+
+            text_bbox = drawer.textbbox((0, 0), category_name, font=label_font)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = text_bbox[3] - text_bbox[1]
+
+            text_x = max(0, min(int(x), image.width - text_width - 2 * label_padding))
+            text_y = int(y) - text_height - 2 * label_padding - 2
+            if text_y < 0:
+                text_y = min(int(y2) + 2, image.height - text_height - 2 * label_padding)
+            text_y = max(0, text_y)
+
+            background_box = [
+                (text_x, text_y),
+                (min(image.width, text_x + text_width + 2 * label_padding), min(image.height, text_y + text_height + 2 * label_padding)),
+            ]
+            drawer.rectangle(background_box, fill="black")
+            drawer.text(
+                (text_x + label_padding, text_y + label_padding),
+                category_name,
+                fill="yellow",
+                font=label_font,
+            )
 
         rendered_images.append(image)
         sampled_titles.append(str(image_info["file_name"]))
@@ -175,17 +220,23 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--annotations",
         type=Path,
-        default=Path("data/annotations/objects/annotations_val.json"),
+        default=Path("data/annotations/objects/annotations_train.json"),
         help="Path to COCO JSON annotations file.",
     )
     parser.add_argument(
         "--images-dir",
         type=Path,
-        default=Path("data/images/val"),
+        default=Path("data/images/train"),
         help="Directory containing dataset images.",
     )
-    parser.add_argument("--num-images", type=int, default=6, help="How many random images to draw.")
+    parser.add_argument("--num-images", type=int, default=50, help="How many random images to draw.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible sampling.")
+    parser.add_argument(
+        "--label-font-size",
+        type=int,
+        default=24,
+        help="Font size for the class labels drawn on each bounding box.",
+    )
     parser.add_argument(
         "--no-show",
         action="store_true",
@@ -202,6 +253,7 @@ def main() -> None:
         images_dir=args.images_dir,
         num_images=args.num_images,
         seed=args.seed,
+        label_font_size=args.label_font_size,
         show=not args.no_show,
     )
     print(f"Rendered {len(rendered)} image(s) with bounding boxes.")
