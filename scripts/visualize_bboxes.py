@@ -17,6 +17,7 @@ def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) 
 
     root = tk.Tk()
     root.title("COCO Bounding Box Viewer")
+    root.minsize(640, 480)
 
     image_label = tk.Label(root)
     image_label.pack(padx=8, pady=8, fill="both", expand=True)
@@ -26,6 +27,8 @@ def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) 
 
     current_index = 0
     resize_job: str | None = None
+    last_root_size: tuple[int, int] | None = None
+    last_render_signature: tuple[int, int, int] | None = None
 
     def _fit_to_window(pil_image: Image.Image) -> Image.Image:
         available_width = image_label.winfo_width()
@@ -44,11 +47,17 @@ def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) 
         return pil_image.resize((resized_width, resized_height), Image.Resampling.LANCZOS)
 
     def _render(index: int) -> None:
+        nonlocal last_render_signature
         pil_image = _fit_to_window(images[index])
+        render_signature = (index, pil_image.width, pil_image.height)
+        if render_signature == last_render_signature:
+            return
+
         photo = ImageTk.PhotoImage(pil_image)
         image_label.configure(image=photo)
         image_label.image = photo
         info_label.configure(text=f"{index + 1}/{len(images)} - {titles[index]}")
+        last_render_signature = render_signature
 
     def _next_image(_event: Any | None = None) -> None:
         nonlocal current_index
@@ -72,7 +81,15 @@ def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) 
     root.bind("q", lambda _event: root.destroy())
 
     def _on_resize(_event: Any) -> None:
-        nonlocal resize_job
+        nonlocal resize_job, last_root_size
+        if _event.widget is not root:
+            return
+
+        new_size = (root.winfo_width(), root.winfo_height())
+        if new_size == last_root_size:
+            return
+        last_root_size = new_size
+
         if resize_job is not None:
             root.after_cancel(resize_job)
         resize_job = root.after(60, _render, current_index)
