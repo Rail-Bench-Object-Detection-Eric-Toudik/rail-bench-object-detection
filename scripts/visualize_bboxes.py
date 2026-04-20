@@ -217,16 +217,20 @@ def show_sample_images_with_bboxes(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Show sample images with COCO bounding boxes.")
+
+    # ... = Projekt-Root (eine Ebene über scripts/)
+    base_dir = Path(__file__).resolve().parent.parent
+
     parser.add_argument(
         "--annotations",
         type=Path,
-        default=Path("data/annotations/objects/annotations_train.json"),
+        default=base_dir / "data" / "annotations" / "objects" / "annotations_train.json",
         help="Path to COCO JSON annotations file.",
     )
     parser.add_argument(
         "--images-dir",
         type=Path,
-        default=Path("data/images/train"),
+        default=base_dir / "data" / "images" / "train",
         help="Directory containing dataset images.",
     )
     parser.add_argument("--num-images", type=int, default=50, help="How many random images to draw.")
