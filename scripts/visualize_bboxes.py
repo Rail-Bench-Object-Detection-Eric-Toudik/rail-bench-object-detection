@@ -7,7 +7,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 import tkinter as tk
+from tkinter import ttk
 
+import PIL
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 
@@ -16,8 +18,8 @@ def _load_label_font(font_size: int) -> ImageFont.FreeTypeFont | ImageFont.Image
         Path(r"C:\Windows\Fonts\arial.ttf"),
         Path(r"C:\Windows\Fonts\segoeui.ttf"),
         Path(r"C:\Windows\Fonts\tahoma.ttf"),
-        Path(ImageFont.__file__).resolve().parent / "fonts" / "DejaVuSans.ttf",
-        Path(ImageFont.__file__).resolve().parent / "DejaVuSans.ttf",
+        Path(PIL.__path__[0]).resolve() / "fonts" / "DejaVuSans.ttf",
+        Path(PIL.__path__[0]).resolve() / "DejaVuSans.ttf",
     ]
 
     for font_path in candidate_paths:
@@ -30,7 +32,120 @@ def _load_label_font(font_size: int) -> ImageFont.FreeTypeFont | ImageFont.Image
     return ImageFont.load_default()
 
 
-def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) -> None:
+def _resolve_split_paths(split: str) -> tuple[Path, Path]:
+    split = split.lower().strip()
+    annotations_path = Path(f"data/annotations/objects/annotations_{split}.json")
+    images_dir = Path(f"data/images/{split}")
+    return annotations_path, images_dir
+
+
+def _infer_split_name(annotations_path: Path, images_dir: Path) -> str:
+    annotations_name = annotations_path.stem.lower()
+    images_name = images_dir.name.lower()
+    if "val" in annotations_name or images_name == "val":
+        return "val"
+    if "train" in annotations_name or images_name == "train":
+        return "train"
+    return "custom"
+
+
+def _render_coco_images(
+    annotations_path: str | Path,
+    images_dir: str | Path,
+    num_images: int = 50,
+    seed: int = 42,
+    label_font_size: int = 24,
+    image_id: int | None = None,
+) -> tuple[list[Image.Image], list[str]]:
+    annotations_path = Path(annotations_path)
+    images_dir = Path(images_dir)
+
+    with annotations_path.open("r", encoding="utf-8") as f:
+        coco = json.load(f)
+
+    images: list[dict[str, Any]] = coco.get("images", [])
+    annotations: list[dict[str, Any]] = coco.get("annotations", [])
+    categories: list[dict[str, Any]] = coco.get("categories", [])
+
+    if not images:
+        raise ValueError(f"No images found in annotation file: {annotations_path}")
+
+    categories_by_id = {cat["id"]: cat.get("name", str(cat["id"])) for cat in categories}
+    images_by_id = {img["id"]: img for img in images}
+    label_font = _load_label_font(label_font_size)
+    label_padding = max(4, label_font_size // 4)
+    outline_width = max(2, label_font_size // 12)
+
+    annotations_by_image_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for ann in annotations:
+        annotations_by_image_id[ann["image_id"]].append(ann)
+
+    if image_id is not None:
+        selected_image = images_by_id.get(image_id)
+        if selected_image is None:
+            raise ValueError(f"Image id {image_id} not found in annotation file: {annotations_path}")
+        sampled_images = [selected_image]
+    else:
+        rng = random.Random(seed)
+        sample_count = min(num_images, len(images))
+        sampled_images = rng.sample(images, k=sample_count)
+
+    rendered_images: list[Image.Image] = []
+    sampled_titles: list[str] = []
+    for image_info in sampled_images:
+        image_path = images_dir / image_info["file_name"]
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image referenced in annotations does not exist: {image_path}")
+
+        image = Image.open(image_path).convert("RGB")
+        drawer = ImageDraw.Draw(image)
+
+        for ann in annotations_by_image_id.get(image_info["id"], []):
+            x, y, w, h = ann["bbox"]
+            x2 = x + w
+            y2 = y + h
+            category_name = categories_by_id.get(ann["category_id"], str(ann["category_id"]))
+            occlusion = ann.get("occlusion", ann.get("occluded", "unknown"))
+            iscrowd = int(bool(ann.get("iscrowd", 0)))
+            label_text = f"{category_name}  occ:{occlusion}  crowd:{iscrowd}"
+            outline_color = "deepskyblue" if iscrowd else "red"
+
+            drawer.rectangle([(x, y), (x2, y2)], outline=outline_color, width=outline_width)
+
+            text_bbox = drawer.textbbox((0, 0), label_text, font=label_font)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = text_bbox[3] - text_bbox[1]
+
+            text_x = max(0, min(int(x), image.width - text_width - 2 * label_padding))
+            text_y = int(y) - text_height - 2 * label_padding - 2
+            if text_y < 0:
+                text_y = min(int(y2) + 2, image.height - text_height - 2 * label_padding)
+            text_y = max(0, text_y)
+
+            background_box = [
+                (text_x, text_y),
+                (min(image.width, text_x + text_width + 2 * label_padding), min(image.height, text_y + text_height + 2 * label_padding)),
+            ]
+            drawer.rectangle(background_box, fill="black")
+            drawer.text(
+                (text_x + label_padding, text_y + label_padding),
+                label_text,
+                fill="yellow",
+                font=label_font,
+            )
+
+        rendered_images.append(image)
+        sampled_titles.append(str(image_info["file_name"]))
+
+    return rendered_images, sampled_titles
+
+
+def _show_images_in_single_window(
+    images: list[Image.Image],
+    titles: list[str],
+    reload_callback: Any | None = None,
+    initial_split: str = "train",
+) -> None:
     if not images:
         return
 
@@ -44,8 +159,23 @@ def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) 
     info_label = tk.Label(root)
     info_label.pack(padx=8, pady=(0, 8))
 
+    control_row = tk.Frame(root)
+    control_row.pack(padx=8, pady=(8, 0), fill="x")
+    tk.Label(control_row, text="Split:").pack(side="left", padx=(0, 4))
+    split_var = tk.StringVar(value=initial_split)
+    split_selector = ttk.Combobox(control_row, textvariable=split_var, values=("train", "val", "custom"), width=10, state="readonly")
+    split_selector.pack(side="left", padx=(0, 8))
+    tk.Label(control_row, text="Image ID:").pack(side="left", padx=(0, 4))
+    image_id_var = tk.StringVar(value="")
+    image_id_entry = tk.Entry(control_row, textvariable=image_id_var, width=12)
+    image_id_entry.pack(side="left", padx=(0, 8))
+    status_var = tk.StringVar(value="")
+    status_label = tk.Label(root, textvariable=status_var, anchor="w")
+    status_label.pack(padx=8, pady=(0, 4), fill="x")
+
     current_index = 0
     resize_job: str | None = None
+    startup_render_job: str | None = None
     last_root_size: tuple[int, int] | None = None
     last_render_signature: tuple[int, int, int, float, int, int, int, int] | None = None
     zoom_factor = 1.0
@@ -55,6 +185,48 @@ def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) 
     pan_x = 0.0
     pan_y = 0.0
     drag_last_position: tuple[int, int] | None = None
+    startup_ready = False
+
+    def _reset_view_state() -> None:
+        nonlocal current_index, zoom_factor, pan_x, pan_y, drag_last_position, last_render_signature
+        current_index = 0
+        zoom_factor = 1.0
+        pan_x = 0.0
+        pan_y = 0.0
+        drag_last_position = None
+        last_render_signature = None
+
+    def _load_images_for_current_selection() -> None:
+        nonlocal images, titles
+        if reload_callback is None:
+            status_var.set("UI load is only available for the built-in train/val dataset.")
+            return
+
+        split = split_var.get().strip().lower()
+        entered_image_id = image_id_var.get().strip()
+        try:
+            parsed_image_id = int(entered_image_id) if entered_image_id else None
+        except ValueError:
+            status_var.set(f"Invalid image id: {entered_image_id!r}")
+            return
+        try:
+            new_images, new_titles = reload_callback(split, parsed_image_id)
+        except Exception as exc:
+            status_var.set(str(exc))
+            return
+
+        images = new_images
+        titles = new_titles
+        status_var.set(f"Loaded split={split} image_id={parsed_image_id if parsed_image_id is not None else 'random'}")
+        _reset_view_state()
+        _render(current_index)
+
+    tk.Button(control_row, text="Load", command=_load_images_for_current_selection, width=12).pack(side="left", padx=(0, 4))
+    def _load_random_selection() -> None:
+        image_id_var.set("")
+        _load_images_for_current_selection()
+
+    tk.Button(control_row, text="Random", command=_load_random_selection, width=12).pack(side="left", padx=(0, 4))
 
     def _get_available_size() -> tuple[int, int]:
         available_width = image_label.winfo_width()
@@ -116,6 +288,12 @@ def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) 
             )
         )
         last_render_signature = render_signature
+
+    def _complete_initial_render() -> None:
+        nonlocal startup_ready, startup_render_job
+        startup_render_job = None
+        startup_ready = True
+        _render(current_index)
 
     def _set_zoom(new_zoom: float) -> None:
         nonlocal zoom_factor, pan_x, pan_y
@@ -208,7 +386,7 @@ def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) 
     image_label.bind("<ButtonRelease-1>", _end_drag)
 
     def _on_resize(_event: Any) -> None:
-        nonlocal resize_job, last_root_size
+        nonlocal resize_job, last_root_size, startup_render_job
         if _event.widget is not root:
             return
 
@@ -217,13 +395,19 @@ def _show_images_in_single_window(images: list[Image.Image], titles: list[str]) 
             return
         last_root_size = new_size
 
+        if not startup_ready:
+            if startup_render_job is not None:
+                root.after_cancel(startup_render_job)
+            startup_render_job = root.after(150, _complete_initial_render)
+            return
+
         if resize_job is not None:
             root.after_cancel(resize_job)
         resize_job = root.after(60, _render, current_index)
 
     root.bind("<Configure>", _on_resize)
 
-    _render(current_index)
+    startup_render_job = root.after(150, _complete_initial_render)
     root.mainloop()
 
 
@@ -250,86 +434,33 @@ def show_sample_images_with_bboxes(
     Returns:
         List of PIL images with rendered bounding boxes and category labels.
     """
-    annotations_path = Path(annotations_path)
-    images_dir = Path(images_dir)
-
-    with annotations_path.open("r", encoding="utf-8") as f:
-        coco = json.load(f)
-
-    images: list[dict[str, Any]] = coco.get("images", [])
-    annotations: list[dict[str, Any]] = coco.get("annotations", [])
-    categories: list[dict[str, Any]] = coco.get("categories", [])
-
-    if not images:
-        raise ValueError(f"No images found in annotation file: {annotations_path}")
-
-    categories_by_id = {cat["id"]: cat.get("name", str(cat["id"])) for cat in categories}
-    images_by_id = {img["id"]: img for img in images}
-    label_font = _load_label_font(label_font_size)
-    label_padding = max(4, label_font_size // 4)
-    outline_width = max(2, label_font_size // 12)
-
-    annotations_by_image_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
-    for ann in annotations:
-        annotations_by_image_id[ann["image_id"]].append(ann)
-
-    if image_id is not None:
-        selected_image = images_by_id.get(image_id)
-        if selected_image is None:
-            raise ValueError(f"Image id {image_id} not found in annotation file: {annotations_path}")
-        sampled_images = [selected_image]
-    else:
-        rng = random.Random(seed)
-        sample_count = min(num_images, len(images))
-        sampled_images = rng.sample(images, k=sample_count)
-
-    rendered_images: list[Image.Image] = []
-    sampled_titles: list[str] = []
-    for image_info in sampled_images:
-        image_path = images_dir / image_info["file_name"]
-        if not image_path.exists():
-            raise FileNotFoundError(f"Image referenced in annotations does not exist: {image_path}")
-
-        image = Image.open(image_path).convert("RGB")
-        drawer = ImageDraw.Draw(image)
-
-        for ann in annotations_by_image_id.get(image_info["id"], []):
-            x, y, w, h = ann["bbox"]
-            x2 = x + w
-            y2 = y + h
-            category_name = categories_by_id.get(ann["category_id"], str(ann["category_id"]))
-            occlusion = ann.get("occlusion", ann.get("occluded", "unknown"))
-            label_text = f"{category_name}  occ:{occlusion}"
-
-            drawer.rectangle([(x, y), (x2, y2)], outline="red", width=outline_width)
-
-            text_bbox = drawer.textbbox((0, 0), label_text, font=label_font)
-            text_width = text_bbox[2] - text_bbox[0]
-            text_height = text_bbox[3] - text_bbox[1]
-
-            text_x = max(0, min(int(x), image.width - text_width - 2 * label_padding))
-            text_y = int(y) - text_height - 2 * label_padding - 2
-            if text_y < 0:
-                text_y = min(int(y2) + 2, image.height - text_height - 2 * label_padding)
-            text_y = max(0, text_y)
-
-            background_box = [
-                (text_x, text_y),
-                (min(image.width, text_x + text_width + 2 * label_padding), min(image.height, text_y + text_height + 2 * label_padding)),
-            ]
-            drawer.rectangle(background_box, fill="black")
-            drawer.text(
-                (text_x + label_padding, text_y + label_padding),
-                label_text,
-                fill="yellow",
-                font=label_font,
-            )
-
-        rendered_images.append(image)
-        sampled_titles.append(str(image_info["file_name"]))
+    rendered_images, sampled_titles = _render_coco_images(
+        annotations_path=annotations_path,
+        images_dir=images_dir,
+        num_images=num_images,
+        seed=seed,
+        label_font_size=label_font_size,
+        image_id=image_id,
+    )
 
     if show:
-        _show_images_in_single_window(rendered_images, sampled_titles)
+        initial_split = _infer_split_name(Path(annotations_path), Path(images_dir))
+
+        def _reload(split: str, requested_image_id: int | None) -> tuple[list[Image.Image], list[str]]:
+            if split in {"train", "val"}:
+                split_annotations_path, split_images_dir = _resolve_split_paths(split)
+            else:
+                split_annotations_path, split_images_dir = Path(annotations_path), Path(images_dir)
+            return _render_coco_images(
+                annotations_path=split_annotations_path,
+                images_dir=split_images_dir,
+                num_images=num_images,
+                seed=seed,
+                label_font_size=label_font_size,
+                image_id=requested_image_id,
+            )
+
+        _show_images_in_single_window(rendered_images, sampled_titles, reload_callback=_reload, initial_split=initial_split)
 
     return rendered_images
 
