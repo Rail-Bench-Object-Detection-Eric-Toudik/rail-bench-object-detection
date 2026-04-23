@@ -12,6 +12,9 @@ other classes are less common, train (3.3% training, 3.0% validation) and bicycl
   - BB height 131.2 pixel and width 26.8 pixel
 - Train BBs are the biggest (area), signal and signal_pole BBs are the smallest
 - Percentage of BBs that are close (up to 5 pixels) to the borders: left->1.51%, top->7.47%, right->1.31%, bottom->0.32%
+- Most of the BBs are not occluded (occluded-level: 0), some are partially occluded (occluded-level: 1 to 3) and very few are heavily occluded (occluded-level: 4)
+- Occluded BBs does not mean that the images are foggy
+- Images can be foggy or blurry, and are taken in different weather conditions
 
 
 
