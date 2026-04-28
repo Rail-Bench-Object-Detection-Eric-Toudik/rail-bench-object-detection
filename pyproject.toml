@@ -6,10 +6,12 @@ dependencies = [
     "ipykernel>=7.2.0",
     "matplotlib>=3.10.8",
     "pandas>=3.0.2",
+    "python-dotenv>=1.2.2",
     "seaborn>=0.13.2",
     "torch>=2.11.0",
     "torchvision>=0.26.0",
     "ultralytics>=8.4.42",
+    "wandb>=0.26.1",
 ]
 
 [tool.uv.sources]
