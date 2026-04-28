@@ -1,7 +1,6 @@
 import os
 import wandb
 from dotenv import load_dotenv
-from torch.utils.data._utils import pin_memory
 from ultralytics import YOLO, settings
 
 
