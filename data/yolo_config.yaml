@@ -1,0 +1,7 @@
+# data/objects.yaml
+train: data/images/train
+val: data/images/val
+test: data/images/test
+
+nc: 7
+names: ['train', 'catenary_pole', 'signal_pole', 'signal', 'person', 'road_vehicle', 'bicycle']
