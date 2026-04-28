@@ -34,7 +34,7 @@ def _load_label_font(font_size: int) -> ImageFont.FreeTypeFont | ImageFont.Image
 
 def _resolve_split_paths(split: str) -> tuple[Path, Path]:
     split = split.lower().strip()
-    annotations_path = Path(f"data/annotations/objects/annotations_{split}.json")
+    annotations_path = Path(f"data/coco_annotations/objects/annotations_{split}.json")
     images_dir = Path(f"data/images/{split}")
     return annotations_path, images_dir
 
@@ -64,7 +64,7 @@ def _render_coco_images(
         coco = json.load(f)
 
     images: list[dict[str, Any]] = coco.get("images", [])
-    annotations: list[dict[str, Any]] = coco.get("annotations", [])
+    annotations: list[dict[str, Any]] = coco.get("coco_annotations", [])
     categories: list[dict[str, Any]] = coco.get("categories", [])
 
     if not images:
@@ -95,7 +95,7 @@ def _render_coco_images(
     for image_info in sampled_images:
         image_path = images_dir / image_info["file_name"]
         if not image_path.exists():
-            raise FileNotFoundError(f"Image referenced in annotations does not exist: {image_path}")
+            raise FileNotFoundError(f"Image referenced in coco_annotations does not exist: {image_path}")
 
         image = Image.open(image_path).convert("RGB")
         drawer = ImageDraw.Draw(image)
@@ -472,10 +472,10 @@ def _build_parser() -> argparse.ArgumentParser:
     base_dir = Path(__file__).resolve().parent.parent
 
     parser.add_argument(
-        "--annotations",
+        "--coco_annotations",
         type=Path,
-        default=base_dir / "data" / "annotations" / "objects" / "annotations_train.json",
-        help="Path to COCO JSON annotations file.",
+        default=base_dir / "data" / "coco_annotations" / "objects" / "annotations_train.json",
+        help="Path to COCO JSON coco_annotations file.",
     )
     parser.add_argument(
         "--images-dir",
@@ -500,7 +500,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--image-id",
         type=int,
         default=None,
-        help="Render only this COCO image id (from the selected annotations/images split).",
+        help="Render only this COCO image id (from the selected coco_annotations/images split).",
     )
     return parser
 
