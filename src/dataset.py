@@ -97,11 +97,8 @@ class CocoYOLODataset(Dataset):
         for ann in anns:
             bbox = ann['bbox']  # [x_min, y_min, w, h]
             cls = ann['category_id']
-            # Here we assume they are contiguous and start at 0 or 1. If starting at 1, convert to 0-based:
-            if cls > 0:
-                cls0 = cls - 1
-            else:
-                cls0 = cls
+            # Dataset uses classes 1..7; convert to YOLO 0-based class ids 0..6.
+            cls0 = cls - 1
             x_c, y_c, w_n, h_n = coco_box_to_yolo(bbox, orig_w, orig_h)
             targets.append([cls0, x_c, y_c, w_n, h_n])
         targets = np.array(targets, dtype=np.float32) if len(targets) > 0 else np.zeros((0,5), dtype=np.float32)
