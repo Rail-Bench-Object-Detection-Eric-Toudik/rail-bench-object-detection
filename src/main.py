@@ -14,6 +14,7 @@ def main():
     EPOCHS = 300
     IMAGE_SIZE = 1024
     RUN_NAME = f"baseline_{MODEL_NAME}_{EPOCHS}epochs_{IMAGE_SIZE}"
+    DESCRIPTION = f"test"
 
     settings.update({"wandb": True})
 
@@ -26,9 +27,15 @@ def main():
     if not os.path.exists(CONFIG_PATH):
         raise FileNotFoundError(f"Config file not found: {CONFIG_PATH}")
 
-    model = YOLO(MODEL_PATH)
-    model.train(data=CONFIG_PATH, epochs=EPOCHS, imgsz=IMAGE_SIZE, batch=17,  project="Rail-Bench-Object-Detection-Eric-Toudik",
-                name=RUN_NAME)
+    with wandb.init(
+            project="Rail-Bench-Object-Detection-Eric-Toudik",
+            name=RUN_NAME,
+            notes=DESCRIPTION,
+            tags=[f"{MODEL_NAME}"]
+    ) as run:
+
+        model = YOLO(MODEL_PATH)
+        model.train(data=CONFIG_PATH, epochs=EPOCHS, imgsz=IMAGE_SIZE, batch=17, name=RUN_NAME)
 
 if __name__ == '__main__':
     main()
