@@ -3,6 +3,14 @@ epochs: 1 # 300
 batch_size: 12
 image_size: 1024
 model_name: "yolo11s" # Model architecture to use; options include  "yolo11n",  "yolo11s", "yolo11m"
+seed: 42
+
+# Learning Rates
+lr0: 0.01 # initial learning rate
+lrf: 0.01 # Final learning rate
+
+# Enable AutoAugment with a custom policy
+auto_augment: "randaugment" # Use RandAugment for automatic augmentation; can also specify "autoaugment" or "augmix"
 
 # Color Augmentations
 hsv_h: 0.01 # Hue shift as a fraction of the hue range; low because color/hue may be relevant

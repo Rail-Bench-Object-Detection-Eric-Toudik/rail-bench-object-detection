@@ -39,6 +39,10 @@ def main():
         "imgsz": run_config["image_size"],
         "batch": run_config["batch_size"],
         "name": RUN_NAME,
+        "seed": run_config["seed"],
+        "lr0": run_config["lr0"],
+        "lr1": run_config["lr1"],
+        "auto_augment": run_config["auto_augment"],
 
         # Color augmentations
         "hsv_h": run_config["hsv_h"],
