@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 from ultralytics import YOLO, settings
 from read_config import read_config
 import albumentations as A
-from ultralytics.data import augment
 
 
 def main():
