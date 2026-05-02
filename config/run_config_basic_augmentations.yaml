@@ -1,0 +1,26 @@
+# Training
+epochs: 1 # 300
+batch_size: 12
+image_size: 1024
+model_name: "yolo11s" # Model architecture to use; options include  "yolo11n",  "yolo11s", "yolo11m"
+
+# Color Augmentations
+hsv_h: 0.01 # Hue shift as a fraction of the hue range; low because color/hue may be relevant
+hsv_s: 0.5 # Saturation variation; simulates different lighting/weather conditions
+hsv_v: 0.3 # Brightness/value variation
+
+
+# Geometric Augmentations
+translate: 0.1 # Translate image by up to 10% of image height/width
+scale: 0.4 # Scale variation of up to 40%
+fliplr: 0.5 # Horizontal flip probability of 50%
+
+
+# Blur Augmentations
+blur: False # Enable blur augmentation
+blur_limit: 3 # Maximum kernel size for blur; should be an odd integer
+blur_p: 0.05 # Probability of applying blur augmentation
+
+motion_blur: False # Enable motion blur augmentation
+motion_blur_limit: 3 # Maximum kernel size for motion blur; should be an odd integer
+motion_blur_p: 0.05 # Probability of applying motion blur augmentation
