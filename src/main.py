@@ -13,7 +13,7 @@ def main():
     MODEL_PATH = os.path.join(PROJECT_ROOT, 'models', 'yolo11s.pt')
     DATA_CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'yolo_config.yaml')
 
-    RUN_CONFIG_PATH = os.path.join(PROJECT_ROOT, "config", "run_config_no_augmentation.yaml")
+    RUN_CONFIG_PATH = os.path.join(PROJECT_ROOT, "config", "run_config_no_augmentations.yaml")
     run_config = read_config(RUN_CONFIG_PATH)
 
     RUN_NAME = f"baseline_{run_config["model_name"]}_{run_config["epochs"]}epochs_{run_config["image_size"]}_eric"
