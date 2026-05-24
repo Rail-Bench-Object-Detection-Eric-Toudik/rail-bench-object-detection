@@ -1,0 +1,694 @@
+import json
+import os
+from pathlib import Path
+
+import wandb
+import yaml
+from dotenv import load_dotenv
+from PIL import Image
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
+from sahi.predict import predict
+
+
+# ---------------------------------------------------------------------
+# Paths / Config
+# ---------------------------------------------------------------------
+TEST_PIPELINE = True
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+if TEST_PIPELINE:
+    DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config_pipeline_test.yaml"
+else:
+    DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
+COCO_GT_DIR = PROJECT_ROOT / "data" / "coco_annotations" / "objects"
+DEFAULT_GT_COCO_PATH = COCO_GT_DIR / "annotations_val.json"
+OUTPUT_DIR = PROJECT_ROOT / "outputs"
+
+WANDB_PROJECT = "Rail-Bench-Object-Detection-Eric-Toudik"
+
+# TODO: In W&B nachschauen und ersetzen
+# Format: "ENTITY/PROJECT/ARTIFACT_NAME:VERSION"
+# Beispiel:
+# WANDB_ARTIFACT = "eric-walsh/Rail-Bench-Object-Detection-Eric-Toudik/model-best:latest"
+WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_7dnut8bz_model:v0"
+
+
+# ---------------------------------------------------------------------
+# SAHI / Evaluation Parameters
+# ---------------------------------------------------------------------
+
+SPLIT = "val"
+
+SLICE_HEIGHT = 1024
+SLICE_WIDTH = 1024
+OVERLAP_HEIGHT_RATIO = 0.2
+OVERLAP_WIDTH_RATIO = 0.2
+
+# Für mAP-Evaluation bewusst niedrig wählen.
+# Für reine Visualisierung wäre 0.25 sinnvoller.
+CONF_THRESHOLD = 0.001
+
+POSTPROCESS_MATCH_THRESHOLD = 0.5
+DEVICE = "cuda:0"  # oder "cpu"
+
+RUN_NAME = (
+    f"sahi_{SPLIT}_"
+    f"{SLICE_WIDTH}x{SLICE_HEIGHT}_"
+    f"conf{str(CONF_THRESHOLD).replace('.', '')}_"
+    f"overlap{str(OVERLAP_WIDTH_RATIO).replace('.', '')}"
+)
+
+
+# ---------------------------------------------------------------------
+# W&B Model Download
+# ---------------------------------------------------------------------
+
+def download_model_from_wandb() -> Path:
+    load_dotenv()
+
+    api_key = os.getenv("WANDB_API_KEY")
+    if api_key:
+        wandb.login(key=api_key)
+    else:
+        wandb.login()
+
+    wandb.init(
+        project=WANDB_PROJECT,
+        name=RUN_NAME,
+        job_type="sahi_inference_eval",
+        config={
+            "split": SPLIT,
+            "slice_height": SLICE_HEIGHT,
+            "slice_width": SLICE_WIDTH,
+            "overlap_height_ratio": OVERLAP_HEIGHT_RATIO,
+            "overlap_width_ratio": OVERLAP_WIDTH_RATIO,
+            "confidence_threshold": CONF_THRESHOLD,
+            "postprocess_match_threshold": POSTPROCESS_MATCH_THRESHOLD,
+            "device": DEVICE,
+            "wandb_artifact": WANDB_ARTIFACT,
+        },
+    )
+
+    artifact = wandb.use_artifact(WANDB_ARTIFACT, type="model")
+    artifact_dir = Path(artifact.download())
+
+    candidates = list(artifact_dir.rglob("best.pt"))
+
+    if not candidates:
+        candidates = list(artifact_dir.rglob("*.pt"))
+
+    if not candidates:
+        raise FileNotFoundError(
+            f"No .pt model file found in downloaded artifact directory: {artifact_dir}"
+        )
+
+    model_path = candidates[0]
+    print(f"Using model: {model_path}")
+
+    return model_path
+
+
+# ---------------------------------------------------------------------
+# Data Config Helpers
+# ---------------------------------------------------------------------
+
+def load_yolo_data_config(data_config_path: Path) -> dict:
+    with open(data_config_path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def resolve_split_image_dir(data_config_path: Path, split: str) -> Path:
+    data_cfg = load_yolo_data_config(data_config_path)
+
+    if split not in data_cfg:
+        raise KeyError(f"Split '{split}' not found in {data_config_path}")
+
+    image_dir = Path(data_cfg[split])
+
+    if not image_dir.is_absolute():
+        image_dir = (data_config_path.parent / image_dir).resolve()
+
+    if not image_dir.exists():
+        raise FileNotFoundError(f"Image directory not found: {image_dir}")
+
+    return image_dir
+
+
+def infer_label_dir_from_image_dir(image_dir: Path, split: str) -> Path:
+    """
+    Expected common YOLO structure:
+      data/images/val
+      data/labels/val
+    """
+    image_dir_str = str(image_dir)
+
+    old = str(Path("images") / split)
+    new = str(Path("labels") / split)
+
+    label_dir = Path(image_dir_str.replace(old, new))
+
+    if not label_dir.exists():
+        raise FileNotFoundError(
+            f"Label directory not found: {label_dir}\n"
+            f"Expected labels next to images, e.g. data/labels/{split}."
+        )
+
+    return label_dir
+
+
+def get_default_gt_coco_path() -> Path:
+    return DEFAULT_GT_COCO_PATH
+
+
+# ---------------------------------------------------------------------
+# YOLO Labels -> COCO Ground Truth
+# ---------------------------------------------------------------------
+
+def yolo_labels_to_coco_gt(
+    data_config_path: Path,
+    split: str,
+    output_json_path: Path,
+    category_id_offset: int = 0,
+) -> Path:
+    """
+    Converts YOLO detection labels to COCO ground-truth JSON.
+
+    YOLO format per line:
+      class_id x_center y_center width height
+
+    Normalized coordinates in [0, 1].
+
+    category_id_offset:
+      0 -> categories are 0..n-1
+      1 -> categories are 1..n
+
+    Start with 0. If COCOeval gives category mismatch problems,
+    check SAHI result.json category_ids and adjust if needed.
+    """
+    data_cfg = load_yolo_data_config(data_config_path)
+    names = data_cfg["names"]
+
+    image_dir = resolve_split_image_dir(data_config_path, split)
+    label_dir = infer_label_dir_from_image_dir(image_dir, split)
+
+    categories = [
+        {
+            "id": class_id + category_id_offset,
+            "name": class_name,
+            "supercategory": "object",
+        }
+        for class_id, class_name in enumerate(names)
+    ]
+
+    images = []
+    annotations = []
+
+    annotation_id = 1
+    image_id = 1
+
+    image_paths = sorted(
+        list(image_dir.glob("*.jpg"))
+        + list(image_dir.glob("*.jpeg"))
+        + list(image_dir.glob("*.png"))
+    )
+
+    if not image_paths:
+        raise FileNotFoundError(f"No images found in {image_dir}")
+
+    for image_path in image_paths:
+        with Image.open(image_path) as img:
+            width, height = img.size
+
+        images.append(
+            {
+                "id": image_id,
+                "file_name": image_path.name,
+                "width": width,
+                "height": height,
+            }
+        )
+
+        label_path = label_dir / f"{image_path.stem}.txt"
+
+        if label_path.exists():
+            with open(label_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            for line in lines:
+                parts = line.strip().split()
+
+                if not parts:
+                    continue
+
+                if len(parts) < 5:
+                    raise ValueError(
+                        f"Invalid YOLO label line in {label_path}: {line}"
+                    )
+
+                class_id = int(float(parts[0]))
+                x_center = float(parts[1])
+                y_center = float(parts[2])
+                bbox_width = float(parts[3])
+                bbox_height = float(parts[4])
+
+                x_min = (x_center - bbox_width / 2.0) * width
+                y_min = (y_center - bbox_height / 2.0) * height
+                box_width = bbox_width * width
+                box_height = bbox_height * height
+
+                # Optional: clamp very small numerical issues
+                x_min = max(0.0, x_min)
+                y_min = max(0.0, y_min)
+                box_width = min(box_width, width - x_min)
+                box_height = min(box_height, height - y_min)
+
+                if box_width <= 0 or box_height <= 0:
+                    continue
+
+                annotations.append(
+                    {
+                        "id": annotation_id,
+                        "image_id": image_id,
+                        "category_id": class_id + category_id_offset,
+                        "bbox": [
+                            float(x_min),
+                            float(y_min),
+                            float(box_width),
+                            float(box_height),
+                        ],
+                        "area": float(box_width * box_height),
+                        "iscrowd": 0,
+                    }
+                )
+
+                annotation_id += 1
+
+        image_id += 1
+
+    coco_gt = {
+        "info": {
+            "description": f"Temporary COCO GT generated from YOLO labels for split '{split}'"
+        },
+        "licenses": [],
+        "images": images,
+        "annotations": annotations,
+        "categories": categories,
+    }
+
+    output_json_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_json_path, "w", encoding="utf-8") as f:
+        json.dump(coco_gt, f, indent=2)
+
+    print(f"Saved COCO GT to: {output_json_path}")
+    print(f"Images: {len(images)}")
+    print(f"Annotations: {len(annotations)}")
+    print(f"Categories: {len(categories)}")
+
+    return output_json_path
+
+
+# ---------------------------------------------------------------------
+# SAHI Prediction
+# ---------------------------------------------------------------------
+
+def run_sahi_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> Path:
+    result = predict(
+        model_type="ultralytics",
+        model_path=str(model_path),
+        model_device=DEVICE,
+        model_confidence_threshold=CONF_THRESHOLD,
+
+        source=str(source_dir),
+
+        slice_height=SLICE_HEIGHT,
+        slice_width=SLICE_WIDTH,
+        overlap_height_ratio=OVERLAP_HEIGHT_RATIO,
+        overlap_width_ratio=OVERLAP_WIDTH_RATIO,
+
+        postprocess_type="NMS",
+        postprocess_match_metric="IOU",
+        postprocess_match_threshold=POSTPROCESS_MATCH_THRESHOLD,
+
+        dataset_json_path=str(gt_coco_path),
+
+        project=str(OUTPUT_DIR),
+        name=RUN_NAME,
+
+        no_standard_prediction=True,
+
+        export_pickle=False,
+        export_crop=False,
+        visual_bbox_thickness=2,
+        visual_text_size=1,
+
+        # WICHTIG:
+        # SAHI gibt dann den tatsächlich verwendeten Output-Ordner zurück.
+        return_dict=True,
+    )
+
+    if result is None or "export_dir" not in result:
+        raise RuntimeError(
+            "SAHI predict() did not return an export_dir. "
+            "Check whether prediction finished successfully."
+        )
+
+    prediction_dir = Path(result["export_dir"])
+
+    print(f"SAHI actual export dir: {prediction_dir}")
+
+    candidates = [
+        prediction_dir / "result.json",
+        prediction_dir / "results.json",
+        prediction_dir / "prediction_result.json",
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            print(f"Using prediction JSON: {candidate}")
+            return candidate
+
+    json_files = list(prediction_dir.rglob("*.json"))
+
+    if not json_files:
+        print("\nFiles created by SAHI:")
+        for path in prediction_dir.rglob("*"):
+            print(path)
+
+        raise FileNotFoundError(
+            f"No prediction JSON found in actual SAHI export dir: {prediction_dir}\n"
+            f"GT COCO path exists: {gt_coco_path.exists()}\n"
+            f"GT COCO path: {gt_coco_path}"
+        )
+
+    print(f"Using prediction JSON: {json_files[0]}")
+    return json_files[0]
+
+
+# ---------------------------------------------------------------------
+# Save Predictions (custom test format)
+# ---------------------------------------------------------------------
+
+CATEGORY_NAME_TO_ID = {
+    "train": 1,
+    "catenary_pole": 2,
+    "signal_pole": 3,
+    "signal": 4,
+    "person": 5,
+    "road_vehicle": 6,
+    "bicycle": 7,
+}
+
+
+def _clamp_score(s: float) -> float:
+    try:
+        s = float(s)
+    except Exception:
+        return 0.0
+    return max(0.0, min(1.0, s))
+
+
+def _validate_bbox(bbox) -> list:
+    try:
+        bbox_list = list(bbox)
+    except Exception:
+        raise ValueError(f"bbox must be an iterable with 4 numeric values. Got: {bbox}")
+    if len(bbox_list) != 4:
+        raise ValueError(f"bbox must contain 4 elements [u_min, v_min, w, h]. Got: {bbox_list}")
+    try:
+        bbox_list = [float(x) for x in bbox_list]
+    except Exception:
+        raise ValueError(f"bbox elements must be numeric: {bbox_list}")
+    return bbox_list
+
+
+def save_predictions_coco(pred_json_path: Path, gt_coco_path: Path | None, out_path: Path, score_threshold: float = 0.0) -> Path:
+    """
+    Lädt ein COCO-artiges Prediction-JSON (Liste von Dicts) und speichert es im gewünschten
+    Testformat (Liste von Objekten mit keys: file_name, category_id, bbox, score).
+
+    - pred_json_path: Pfad zur SAHI/COCO Prediction JSON (typisch: result.json)
+    - gt_coco_path: Pfad zur generierten COCO GT (wird verwendet, um image_id -> file_name zu mappen).
+                    Falls None oder nicht existent, wird der Image-Ordner aus config verwendet.
+    - out_path: Ausgabepfad (z.B. OUTPUT_DIR / 'pred_test.json')
+    - score_threshold: optional, nur Vorhersagen mit score >= threshold werden gespeichert
+    """
+    with open(pred_json_path, "r", encoding="utf-8") as f:
+        pred_raw = json.load(f)
+
+    # SAHI/COCO outputs are usually a list; falls ein dict geliefert wird, versuchen wir, die Liste zu extrahieren
+    if isinstance(pred_raw, dict):
+        # häufige keys: 'predictions', 'results', 'images', 'annotations'
+        for key in ("predictions", "results", "images", "annotations", "detections"):
+            if key in pred_raw and isinstance(pred_raw[key], list):
+                preds = pred_raw[key]
+                break
+        else:
+            # Fallback: suche Listeneinträge in der dict values
+            list_vals = [v for v in pred_raw.values() if isinstance(v, list)]
+            preds = list_vals[0] if list_vals else []
+    elif isinstance(pred_raw, list):
+        preds = pred_raw
+    else:
+        raise ValueError(f"Unrecognized prediction JSON structure: {type(pred_raw)}")
+
+    # Lade GT COCO, um image_id -> file_name zu mappen
+    image_id_to_name = {}
+    available_file_names = set()
+
+    if gt_coco_path is not None and gt_coco_path.exists():
+        with open(gt_coco_path, "r", encoding="utf-8") as f:
+            gt = json.load(f)
+
+        image_id_to_name = {img["id"]: img["file_name"] for img in gt.get("images", [])}
+        available_file_names = {img["file_name"] for img in gt.get("images", [])}
+    else:
+        # Fallback: benutze Image-Ordner aus data config (resolve_split_image_dir)
+        try:
+            image_dir = resolve_split_image_dir(DATA_CONFIG_PATH, SPLIT)
+            image_paths = sorted(
+                list(image_dir.glob("*.jpg"))
+                + list(image_dir.glob("*.jpeg"))
+                + list(image_dir.glob("*.png"))
+            )
+            available_file_names = {p.name for p in image_paths}
+            if available_file_names:
+                print(f"Using image files from {image_dir} to resolve file names ({len(available_file_names)} images)")
+                # Erzeuge eine image_id -> file_name Map analog zur yolo_labels_to_coco_gt Funktion
+                # (IDs werden sequentiell ab 1 in sortierter Reihenfolge vergeben)
+                image_id_to_name = {i + 1: p.name for i, p in enumerate(image_paths)}
+        except Exception as e:
+            print(f"Warning: could not resolve image dir from data config: {e}")
+
+    results = []
+    for p in preds:
+        # p kann bereits die gewünschte Struktur haben
+        file_name = p.get("file_name") or p.get("image_file") or None
+
+        if file_name is None and "image_id" in p:
+            file_name = image_id_to_name.get(p["image_id"])
+
+        if file_name is None:
+            # manche Formate nutzen 'image'-> {'file_name':...}
+            if "image" in p and isinstance(p["image"], dict):
+                file_name = p["image"].get("file_name")
+
+        # Falls nur image_id vorhanden ist, mappe ggf. über GT
+        if file_name is None and "image_id" in p and p.get("image_id") in image_id_to_name:
+            file_name = image_id_to_name.get(p.get("image_id"))
+
+        # Falls kein file_name, versuche 'file_name' aus Pfadfragmenten / 'image_path'
+        if file_name is None:
+            for key in ("image_path", "path", "file"):
+                if key in p and isinstance(p[key], str):
+                    file_name = Path(p[key]).name
+                    break
+
+        if file_name is None:
+            # wenn weiterhin unbekannt: versuchen wir, anhand available_file_names heuristisch zu matchen
+            if isinstance(p.get("image_id"), int) and p.get("image_id") in image_id_to_name:
+                file_name = image_id_to_name.get(p.get("image_id"))
+
+        if file_name is None:
+            # falls immer noch unbekannt: skip
+            print(f"Warning: could not determine file name for prediction entry, skipping: {p}")
+            continue
+
+        # Kategorie
+        cat_id = p.get("category_id") or p.get("category") or None
+        if isinstance(cat_id, str):
+            # wenn Name gegeben, mappe
+            if cat_id.isdigit():
+                cat_id = int(cat_id)
+            elif cat_id in CATEGORY_NAME_TO_ID:
+                cat_id = CATEGORY_NAME_TO_ID[cat_id]
+
+        if not isinstance(cat_id, int):
+            # manchmal ist category_name vorhanden
+            cat_name = p.get("category_name") or p.get("label")
+            if isinstance(cat_name, str) and cat_name in CATEGORY_NAME_TO_ID:
+                cat_id = CATEGORY_NAME_TO_ID[cat_name]
+
+        # final: falls noch nicht int, versuche zu casten
+        try:
+            cat_id = int(cat_id)
+        except Exception:
+            # Falls ungültig, lassen wir es durch und prüfen später
+            pass
+
+        # bbox
+        bbox = p.get("bbox") or p.get("box") or p.get("bounding_box")
+        if bbox is None and "x" in p and "y" in p and "w" in p and "h" in p:
+            bbox = [p["x"], p["y"], p["w"], p["h"]]
+
+        try:
+            bbox = _validate_bbox(bbox)
+        except Exception as e:
+            print(f"Warning: invalid bbox for {file_name}, skipping: {e}")
+            continue
+
+        score = _clamp_score(p.get("score") or p.get("confidence") or 0.0)
+        if score < float(score_threshold):
+            continue
+
+        if not isinstance(cat_id, int) or not (1 <= cat_id <= 7):
+            print(f"Warning: invalid category_id for {file_name}: {cat_id}. Skipping entry.")
+            continue
+
+        results.append({
+            "file_name": file_name,
+            "category_id": int(cat_id),
+            "bbox": bbox,
+            "score": float(score),
+        })
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=4)
+
+    print(f"Wrote {len(results)} normalized predictions to: {out_path}")
+    return out_path
+
+
+# ---------------------------------------------------------------------
+# Category-ID Check / Fix
+# ---------------------------------------------------------------------
+
+def inspect_category_ids(gt_json_path: Path, pred_json_path: Path):
+    with open(gt_json_path, "r", encoding="utf-8") as f:
+        gt = json.load(f)
+
+    with open(pred_json_path, "r", encoding="utf-8") as f:
+        pred = json.load(f)
+
+    gt_category_ids = sorted({c["id"] for c in gt["categories"]})
+    gt_annotation_category_ids = sorted({a["category_id"] for a in gt["annotations"]})
+    pred_category_ids = sorted({p["category_id"] for p in pred})
+
+    print("\nCategory ID check:")
+    print(f"GT category ids:            {gt_category_ids}")
+    print(f"GT annotation category ids: {gt_annotation_category_ids}")
+    print(f"Prediction category ids:    {pred_category_ids}")
+
+    return gt_category_ids, gt_annotation_category_ids, pred_category_ids
+
+
+# ---------------------------------------------------------------------
+# COCO Evaluation
+# ---------------------------------------------------------------------
+
+def evaluate_coco(gt_json_path: Path, pred_json_path: Path) -> dict:
+    coco_gt = COCO(str(gt_json_path))
+    coco_dt = coco_gt.loadRes(str(pred_json_path))
+
+    evaluator = COCOeval(coco_gt, coco_dt, "bbox")
+    evaluator.evaluate()
+    evaluator.accumulate()
+    evaluator.summarize()
+
+    metrics = {
+        "sahi_coco/AP50-95": float(evaluator.stats[0]),
+        "sahi_coco/AP50": float(evaluator.stats[1]),
+        "sahi_coco/AP75": float(evaluator.stats[2]),
+        "sahi_coco/AP_small": float(evaluator.stats[3]),
+        "sahi_coco/AP_medium": float(evaluator.stats[4]),
+        "sahi_coco/AP_large": float(evaluator.stats[5]),
+        "sahi_coco/AR_1": float(evaluator.stats[6]),
+        "sahi_coco/AR_10": float(evaluator.stats[7]),
+        "sahi_coco/AR_100": float(evaluator.stats[8]),
+        "sahi_coco/AR_small": float(evaluator.stats[9]),
+        "sahi_coco/AR_medium": float(evaluator.stats[10]),
+        "sahi_coco/AR_large": float(evaluator.stats[11]),
+    }
+
+    return metrics
+
+
+# ---------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------
+
+def main():
+    print(f"Run name: {RUN_NAME}")
+
+    model_path = download_model_from_wandb()
+
+    source_dir = resolve_split_image_dir(DATA_CONFIG_PATH, SPLIT)
+
+    gt_coco_path = get_default_gt_coco_path()
+
+    if not gt_coco_path.exists():
+        raise FileNotFoundError(f"Ground-truth COCO file not found: {gt_coco_path}")
+
+    pred_json_path = run_sahi_predict(
+        model_path=model_path,
+        source_dir=source_dir,
+        gt_coco_path=gt_coco_path,
+    )
+
+    pred_test_path = None
+
+    try:
+        pred_test_path = OUTPUT_DIR / "pred_test.json"
+        save_predictions_coco(pred_json_path, gt_coco_path, pred_test_path, score_threshold=0.0)
+    except Exception as e:
+        print(f"Warning: failed to write normalized pred_test.json: {e}")
+
+    inspect_category_ids(
+        gt_json_path=gt_coco_path,
+        pred_json_path=pred_json_path,
+    )
+
+    metrics = evaluate_coco(
+        gt_json_path=gt_coco_path,
+        pred_json_path=pred_json_path,
+    )
+
+    print("\nCOCO Metrics:")
+    for key, value in metrics.items():
+        print(f"{key}: {value:.4f}")
+
+    wandb.log(metrics)
+
+    eval_artifact = wandb.Artifact(
+        name=f"{RUN_NAME}_eval_files",
+        type="evaluation",
+        description="SAHI predictions and existing COCO ground-truth for evaluation.",
+    )
+    eval_artifact.add_file(str(gt_coco_path))
+    eval_artifact.add_file(str(pred_json_path))
+    try:
+        if pred_test_path is not None and pred_test_path.exists():
+            eval_artifact.add_file(str(pred_test_path))
+    except Exception:
+        pass
+    wandb.log_artifact(eval_artifact)
+
+    wandb.finish()
+
+
+if __name__ == "__main__":
+    main()
+

@@ -7,14 +7,20 @@ from ultralytics import YOLO, settings
 from read_config import read_config
 import albumentations as A
 
-
+PIPELINE_TEST = True
 def main():
 
-    RUN_NAME_DETAILS = "no_augmentation" # Details to show in the name of the run, eg. "no augmentation"
-
+    RUN_NAME_DETAILS = "PIPELINE_TEST" # Details to show in the name of the run, eg. "no augmentation"
     PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
     MODEL_PATH = os.path.join(PROJECT_ROOT, 'models', 'yolo11s.pt')
-    DATA_CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'yolo_config.yaml')
+    RUN_NAME_DETAILS = "PIPELINE_TEST"  # Details to show in the name of the run, eg. "no augmentation"
+
+    if PIPELINE_TEST:
+        RUN_NAME_DETAILS = f"PIPELINE_TEST_{RUN_NAME_DETAILS}"  # Make sure to prefix the pipeline Test!
+        DATA_CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'yolo_config_pipeline_test.yaml')
+
+    else:
+        DATA_CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'yolo_config.yaml')
 
     RUN_CONFIG_PATH = os.path.join(PROJECT_ROOT, "config", "run_config_no_augmentations.yaml")
     run_config = read_config(RUN_CONFIG_PATH)
