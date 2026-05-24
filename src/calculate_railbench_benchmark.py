@@ -1,22 +1,7 @@
-#!/usr/bin/env python3
 """
-CLI-Wrapper, der den externen RAIL-BENCH-Format-Check aufruft
-und danach optional die Object-Evaluation startet.
+CLI Wrapper that  runs the Railbench formatting check and the object evaluation.
 
-Verhalten:
-- Bietet die Option --pred_path (Standard: outputs/pred_test.json)
-- Übersetzt die Option zu --pred_file für das externen Skript
-- Optional: --is_railbench_test wird an das externen Skript weitergereicht
-- Führt das externes Skript im Verzeichnis seiner Datei aus, damit relative Pfade dort aufgelöst werden
 
-Diese Datei stellt jetzt die Funktion `run_railbench_format_check` zur Verfügung,
-so dass andere Skripte sie per Import verwenden können. Der CLI-Entrypoint
-ruft weiterhin `main()` und verwendet die Funktion intern.
-
-Zusätzlich enthält die Datei jetzt `prepare_and_run_object_eval`,
-welches ein Projektverzeichnis unter Benchmarks/RAILBENCH_Object/data/
-erzeugt, GT- und Prediction-Dateien dort ablegt und das externe
-`run_object_eval.py` startet.
 """
 from __future__ import annotations
 import argparse
@@ -28,9 +13,8 @@ import subprocess
 from typing import Optional, Union
 import shutil
 
-from jedi.api import project
-
 TEST_PIPELINE = True
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if TEST_PIPELINE:
     DEFAULT_GT_PATH = Path("data") / "pipeline_test" / "annotations_pipeline_test.json"
@@ -138,12 +122,6 @@ def prepare_and_run_object_eval(
     """
     Prepare a RAIL-BENCH project folder and run the object evaluation.
 
-    Steps performed:
-    - Create Benchmarks/RAILBENCH_Object/data/<project_name>/annotations and detectors/<detector_name>
-    - Copy GT file to annotations/annotations_<split>.json
-    - Copy prediction file to detectors/<detector_name>/pred_<split>.json
-    - Execute run_object_eval.py with --project <project_name> (and --overwrite if set)
-
     Parameters:
     - gt_path: path to ground-truth JSON. If None, defaults to data/coco_annotations/objects/annotations_val.json
     - pred_path: path to prediction JSON. If None, defaults to outputs/pred_test.json
@@ -238,6 +216,8 @@ def prepare_and_run_object_eval(
 
     result_path = data_project_dir / "results" / detector_name / "eval_val.json"
 
+
+    print(f"-- Result of the RAIL-BENCH Object evaluation (see {result_path}) : --")
     with open(result_path, "r", encoding="utf-8") as f:
             print(f"Result from run_object_eval.py: {f.read()}")
 
