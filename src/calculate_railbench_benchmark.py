@@ -28,8 +28,14 @@ import subprocess
 from typing import Optional, Union
 import shutil
 
+from jedi.api import project
+
+TEST_PIPELINE = True
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_GT_PATH = Path("data") / "coco_annotations" / "objects" / "annotations_val.json"
+if TEST_PIPELINE:
+    DEFAULT_GT_PATH = Path("data") / "pipeline_test" / "annotations_pipeline_test.json"
+else:
+    DEFAULT_GT_PATH = Path("data") / "coco_annotations" / "objects" / "annotations_val.json"
 DEFAULT_PRED_TEST = Path("outputs") / "pred_test.json"
 
 
@@ -183,6 +189,11 @@ def prepare_and_run_object_eval(
     annotations_dir = data_project_dir / "annotations"
     detectors_dir = data_project_dir / "detectors" / detector_name
 
+    # Remove project dir if it exists
+    if data_project_dir.exists():
+        shutil.rmtree(data_project_dir)
+    os.makedirs(data_project_dir, exist_ok=True)
+
     # Create directories
     annotations_dir.mkdir(parents=True, exist_ok=True)
     detectors_dir.mkdir(parents=True, exist_ok=True)
@@ -224,6 +235,11 @@ def prepare_and_run_object_eval(
         cmd.append("--overwrite")
 
     result = subprocess.run(cmd, cwd=bench_root, env=env)
+
+    result_path = data_project_dir / "results" / detector_name / "eval_val.json"
+
+    with open(result_path, "r", encoding="utf-8") as f:
+            print(f"Result from run_object_eval.py: {f.read()}")
 
     return result.returncode
 

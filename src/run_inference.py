@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from PIL import Image
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
+from ultralytics import YOLO
 from sahi.predict import predict
 
 
@@ -20,20 +21,21 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 if TEST_PIPELINE:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config_pipeline_test.yaml"
+    DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "pipeline_test" / "annotations_pipeline_test.json"
+    WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_yagd292m_model:v0"
+
+
 else:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
-COCO_GT_DIR = PROJECT_ROOT / "data" / "coco_annotations" / "objects"
-DEFAULT_GT_COCO_PATH = COCO_GT_DIR / "annotations_val.json"
+    DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
+    WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_7dnut8bz_model:v0"
+
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 
 WANDB_PROJECT = "Rail-Bench-Object-Detection-Eric-Toudik"
 
-# TODO: In W&B nachschauen und ersetzen
-# Format: "ENTITY/PROJECT/ARTIFACT_NAME:VERSION"
-# Beispiel:
-# WANDB_ARTIFACT = "eric-walsh/Rail-Bench-Object-Detection-Eric-Toudik/model-best:latest"
-WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_7dnut8bz_model:v0"
-
+# Wähle zwischen SAHI und direkter Inference
+USE_SAHI = False  # Setze auf False für direkte Inference ohne SAHI
 
 # ---------------------------------------------------------------------
 # SAHI / Evaluation Parameters
@@ -53,12 +55,18 @@ CONF_THRESHOLD = 0.001
 POSTPROCESS_MATCH_THRESHOLD = 0.5
 DEVICE = "cuda:0"  # oder "cpu"
 
-RUN_NAME = (
-    f"sahi_{SPLIT}_"
-    f"{SLICE_WIDTH}x{SLICE_HEIGHT}_"
-    f"conf{str(CONF_THRESHOLD).replace('.', '')}_"
-    f"overlap{str(OVERLAP_WIDTH_RATIO).replace('.', '')}"
-)
+if USE_SAHI:
+    RUN_NAME = (
+        f"sahi_{SPLIT}_"
+        f"{SLICE_WIDTH}x{SLICE_HEIGHT}_"
+        f"conf{str(CONF_THRESHOLD).replace('.', '')}_"
+        f"overlap{str(OVERLAP_WIDTH_RATIO).replace('.', '')}"
+    )
+else:
+    RUN_NAME = (
+        f"direct_{SPLIT}_"
+        f"conf{str(CONF_THRESHOLD).replace('.', '')}"
+    )
 
 
 # ---------------------------------------------------------------------
@@ -311,6 +319,115 @@ def yolo_labels_to_coco_gt(
 
 
 # ---------------------------------------------------------------------
+# Direct Prediction (without SAHI)
+# ---------------------------------------------------------------------
+
+def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> Path:
+    """
+    Führt direkte Inference ohne SAHI durch und konvertiert die Ergebnisse in COCO-Format.
+    
+    Args:
+        model_path: Pfad zum YOLO-Modell
+        source_dir: Verzeichnis mit Bildern für Inference
+        gt_coco_path: Pfad zur Ground-Truth COCO JSON
+    
+    Returns:
+        Pfad zur JSON-Datei mit den Vorhersagen in COCO-Format
+    """
+    print(f"\nRunning direct YOLO inference without SAHI...")
+    print(f"Model: {model_path}")
+    print(f"Source directory: {source_dir}")
+    
+    # Lade das YOLO-Modell
+    model = YOLO(str(model_path))
+    
+    # Sammle alle Bilder im Verzeichnis
+    image_paths = sorted(
+        list(source_dir.glob("*.jpg"))
+        + list(source_dir.glob("*.jpeg"))
+        + list(source_dir.glob("*.png"))
+    )
+    
+    if not image_paths:
+        raise FileNotFoundError(f"No images found in {source_dir}")
+    
+    print(f"Found {len(image_paths)} images for inference")
+    
+    # Lade Ground-Truth, um image_id -> file_name zu bekommen
+    image_id_to_name = {}
+    if gt_coco_path and gt_coco_path.exists():
+        with open(gt_coco_path, "r", encoding="utf-8") as f:
+            gt = json.load(f)
+        image_id_to_name = {img["id"]: img["file_name"] for img in gt.get("images", [])}
+    
+    # Führe Inference durch und sammle Ergebnisse
+    predictions = []
+    annotation_id = 1
+    
+    for image_idx, image_path in enumerate(image_paths, 1):
+        # Bestimme image_id
+        image_id = image_idx
+        file_name = image_path.name
+        
+        # Führe Inference durch
+        results = model.predict(
+            source=str(image_path),
+            conf=CONF_THRESHOLD,
+            device=DEVICE,
+            verbose=False
+        )
+        
+        # Verarbeite Ergebnisse
+        for result in results:
+            if result.boxes is not None and len(result.boxes) > 0:
+                # Extrahiere Bounding Boxes
+                for i, box in enumerate(result.boxes):
+                    # YOLO gibt normalized oder pixel-coordinates zurück,
+                    # abhängig von der Konfiguration. Wir verwenden xyxy (corners)
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                    
+                    # Konvertiere zu COCO-Format [x, y, width, height]
+                    bbox_x = float(x1)
+                    bbox_y = float(y1)
+                    bbox_w = float(x2 - x1)
+                    bbox_h = float(y2 - y1)
+                    
+                    # Kategorie-ID (YOLO gibt 0-indizierte IDs zurück, GT ist aber 1-indiziert)
+                    category_id = int(box.cls[0].item()) + 1
+
+                    # Konfidenz-Score
+                    confidence = float(box.conf[0].item())
+                    
+                    prediction = {
+                        "image_id": image_id,
+                        "category_id": category_id,
+                        "bbox": [bbox_x, bbox_y, bbox_w, bbox_h],
+                        "area": bbox_w * bbox_h,
+                        "iscrowd": 0,
+                        "score": confidence,
+                        "id": annotation_id
+                    }
+                    predictions.append(prediction)
+                    annotation_id += 1
+        
+        if (image_idx) % 10 == 0:
+            print(f"  Processed {image_idx}/{len(image_paths)} images...")
+    
+    # Speichere Vorhersagen in COCO-Format
+    output_dir = OUTPUT_DIR / RUN_NAME
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    result_path = output_dir / "result.json"
+    
+    with open(result_path, "w", encoding="utf-8") as f:
+        json.dump(predictions, f, indent=2)
+    
+    print(f"Saved {len(predictions)} predictions to {result_path}")
+    
+    return result_path
+
+
+# ---------------------------------------------------------------------
 # SAHI Prediction
 # ---------------------------------------------------------------------
 
@@ -538,6 +655,11 @@ def save_predictions_coco(pred_json_path: Path, gt_coco_path: Path | None, out_p
             # Falls ungültig, lassen wir es durch und prüfen später
             pass
 
+        # YOLO gibt 0-indizierte Kategorien zurück (0-6), aber wir erwarten 1-indiziert (1-7)
+        # Falls cat_id in Bereich 0-6, um +1 verschieben
+        if isinstance(cat_id, int) and 0 <= cat_id <= 6:
+            cat_id = cat_id + 1
+
         # bbox
         bbox = p.get("bbox") or p.get("box") or p.get("bounding_box")
         if bbox is None and "x" in p and "y" in p and "w" in p and "h" in p:
@@ -576,6 +698,53 @@ def save_predictions_coco(pred_json_path: Path, gt_coco_path: Path | None, out_p
 # Category-ID Check / Fix
 # ---------------------------------------------------------------------
 
+def fix_gt_category_ids(gt_json_path: Path, category_id_offset: int = 1) -> None:
+    """
+    Passt die category_ids in der Ground Truth an, um sicherzustellen, dass sie
+    mit den YOLO/SAHI-Vorhersagen übereinstimmen.
+
+    - category_id_offset: +1 verschiebt category_ids von 0-6 auf 1-7
+
+    Prüft zuerst, ob die Anpassung bereits durchgeführt wurde (nur verschieben wenn noch 0-6).
+    Modifiziert die JSON-Datei IN-PLACE (überschreibt Original).
+    """
+    if not gt_json_path.exists():
+        raise FileNotFoundError(f"Ground-truth JSON not found: {gt_json_path}")
+
+    with open(gt_json_path, "r", encoding="utf-8") as f:
+        gt = json.load(f)
+
+    current_category_ids = sorted({c["id"] for c in gt.get("categories", [])})
+
+    # Prüfe, ob Anpassung bereits durchgeführt wurde
+    if min(current_category_ids) >= 1:
+        print(f"Ground-truth hat bereits 1-indizierte Kategorien: {current_category_ids}. Keine Anpassung nötig.")
+        return
+
+    print(f"Aktuelle Kategorien: {current_category_ids}")
+
+    # Verschiebe alle category_ids in den Kategorien
+    for cat in gt.get("categories", []):
+        original_cat_id = cat["id"]
+        cat["id"] = cat["id"] + category_id_offset
+        print(f"  Category '{cat.get('name')}': {original_cat_id} -> {cat['id']}")
+
+    # Verschiebe alle category_ids in den Annotationen
+    annotations_updated = 0
+    for ann in gt.get("annotations", []):
+        if 0 <= ann["category_id"] <= 6:  # Nur verschieben, wenn im YOLO-Bereich
+            ann["category_id"] = ann["category_id"] + category_id_offset
+            annotations_updated += 1
+
+    # Speichern
+    with open(gt_json_path, "w", encoding="utf-8") as f:
+        json.dump(gt, f, indent=2)
+
+    new_category_ids = sorted({c["id"] for c in gt.get("categories", [])})
+    print(f"Ground-truth Kategorien angepasst: {annotations_updated} Annotationen aktualisiert")
+    print(f"  Neue Kategorien: {new_category_ids}")
+
+
 def inspect_category_ids(gt_json_path: Path, pred_json_path: Path):
     with open(gt_json_path, "r", encoding="utf-8") as f:
         gt = json.load(f)
@@ -595,11 +764,98 @@ def inspect_category_ids(gt_json_path: Path, pred_json_path: Path):
     return gt_category_ids, gt_annotation_category_ids, pred_category_ids
 
 
+# Hilfsfunktion zur Korrektur der Predictions
+# -------
+
+def fix_predictions_category_ids(pred_json_path: Path, gt_json_path: Path) -> Path:
+    """
+    Korrigiert die category_ids in den Predictions, um sie mit der GT abzustimmen.
+    
+    YOLO gibt 0-indizierte Kategorien zurück, aber die GT kann 1-indiziert sein.
+    Diese Funktion überprüft und korrigiert die Kategorien.
+    
+    Returns: Pfad zur korrigierten Prediction-Datei
+    """
+    with open(pred_json_path, "r", encoding="utf-8") as f:
+        pred_data = json.load(f)
+    
+    with open(gt_json_path, "r", encoding="utf-8") as f:
+        gt_data = json.load(f)
+    
+    gt_category_ids = {c["id"] for c in gt_data.get("categories", [])}
+    
+    # Verarbeite Predictions
+    if isinstance(pred_data, list) and len(pred_data) > 0:
+        pred_cat_ids = {p.get("category_id") for p in pred_data if isinstance(p, dict) and "category_id" in p}
+        
+        if not pred_cat_ids:
+            print(f"  ⚠️  Keine category_ids in Predictions gefunden")
+            return pred_json_path
+        
+        # Bestimme den erforderlichen Offset
+        gt_min = min(gt_category_ids) if gt_category_ids else 0
+        pred_min = min(pred_cat_ids)
+        pred_max = max(pred_cat_ids)
+        
+        print(f"  Pred kategorie range: [{pred_min}, {pred_max}]")
+        print(f"  GT kategorie range: [{gt_min}, {max(gt_category_ids)}]")
+        print(f"  Pred categories: {sorted(pred_cat_ids)}")
+        print(f"  GT categories: {sorted(gt_category_ids)}")
+        
+        # Überprüfe ob Shift nötig ist
+        # Wenn Pred [0-6] aber GT [1-7], verschiebe um +1
+        # Wenn Pred [1-7] aber GT [1-7], kein shift nötig
+        # Wenn Pred [0-3] aber GT [2-4] und es sind nur 4 items, könnte es auch [0-3] sein die zu [2-4] gehören
+        
+        needs_shift = False
+        
+        # Fall 1: Predictions beginnen mit 0, GT mit 1
+        if pred_min == 0 and gt_min == 1:
+            needs_shift = True
+            offset = 1
+            print(f"  ➡️  Detecting 0-based predictions, GT is 1-based. Shift by +{offset}")
+        # Fall 2: Predictions und GT haben gleichen min aber unterschiedliche Werte
+        elif pred_min == gt_min and pred_cat_ids != gt_category_ids:
+            # Überprüfe ob es nur eine Subset-Issue ist (z.B. nicht alle Kategorien sind vorhanden)
+            if pred_cat_ids <= gt_category_ids:
+                print(f"  ℹ️  Predictions sind eine Subset von GT (nicht alle Kategorien vorhanden)")
+                needs_shift = False
+            else:
+                # Predictions haben Kategorien die nicht in GT sind
+                print(f"  ⚠️  Predictions haben Kategorien die nicht in GT sind: {pred_cat_ids - gt_category_ids}")
+                needs_shift = False
+        else:
+            print(f"  ℹ️  Keine Anpassung nötig")
+        
+        if needs_shift:
+            # Verschiebe alle category_ids um +offset
+            for p in pred_data:
+                if isinstance(p, dict) and "category_id" in p:
+                    p["category_id"] = int(p["category_id"]) + offset
+            
+            # Speichere korrigierte Predictions
+            with open(pred_json_path, "w", encoding="utf-8") as f:
+                json.dump(pred_data, f, indent=2)
+            
+            print(f"  ✓ Predictions category_ids korrigiert (+{offset})")
+        
+        # Verifiziere nach Korrektur
+        pred_cat_ids_after = {p.get("category_id") for p in pred_data if isinstance(p, dict) and "category_id" in p}
+        print(f"  Nach Korrektur: Pred categories: {sorted(pred_cat_ids_after)}")
+    
+    return pred_json_path
+
+
+# -------
+
 # ---------------------------------------------------------------------
 # COCO Evaluation
 # ---------------------------------------------------------------------
 
 def evaluate_coco(gt_json_path: Path, pred_json_path: Path) -> dict:
+    print("\n🔍 Korrigiere Predictions vor Evaluation...")
+    fix_predictions_category_ids(pred_json_path, gt_json_path)
+    
     coco_gt = COCO(str(gt_json_path))
     coco_dt = coco_gt.loadRes(str(pred_json_path))
 
@@ -632,6 +888,7 @@ def evaluate_coco(gt_json_path: Path, pred_json_path: Path) -> dict:
 
 def main():
     print(f"Run name: {RUN_NAME}")
+    print(f"Using {'SAHI' if USE_SAHI else 'direct'} inference method")
 
     model_path = download_model_from_wandb()
 
@@ -642,17 +899,33 @@ def main():
     if not gt_coco_path.exists():
         raise FileNotFoundError(f"Ground-truth COCO file not found: {gt_coco_path}")
 
-    pred_json_path = run_sahi_predict(
-        model_path=model_path,
-        source_dir=source_dir,
-        gt_coco_path=gt_coco_path,
-    )
+    # Stelle sicher, dass die Ground Truth 1-indizierte Kategorien hat (statt 0-indiziert von YOLO)
+    # Dies macht sie konsistent mit den YOLO/SAHI-Vorhersagen nach unserem Offset
+    try:
+        print("\nAnpassung der Ground-Truth-Kategorien (0-6 -> 1-7)...")
+        fix_gt_category_ids(gt_coco_path, category_id_offset=1)
+    except Exception as e:
+        print(f"Warning: Could not fix GT category IDs: {e}")
+
+    # Wähle zwischen SAHI und direkter Inference
+    if USE_SAHI:
+        pred_json_path = run_sahi_predict(
+            model_path=model_path,
+            source_dir=source_dir,
+            gt_coco_path=gt_coco_path,
+        )
+    else:
+        pred_json_path = run_direct_predict(
+            model_path=model_path,
+            source_dir=source_dir,
+            gt_coco_path=gt_coco_path,
+        )
 
     pred_test_path = None
 
     try:
         pred_test_path = OUTPUT_DIR / "pred_test.json"
-        save_predictions_coco(pred_json_path, gt_coco_path, pred_test_path, score_threshold=0.0)
+        save_predictions_coco(pred_json_path, gt_coco_path, pred_test_path, score_threshold=0.2)
     except Exception as e:
         print(f"Warning: failed to write normalized pred_test.json: {e}")
 
@@ -675,7 +948,7 @@ def main():
     eval_artifact = wandb.Artifact(
         name=f"{RUN_NAME}_eval_files",
         type="evaluation",
-        description="SAHI predictions and existing COCO ground-truth for evaluation.",
+        description=f"{'SAHI' if USE_SAHI else 'Direct'} predictions and existing COCO ground-truth for evaluation.",
     )
     eval_artifact.add_file(str(gt_coco_path))
     eval_artifact.add_file(str(pred_json_path))
