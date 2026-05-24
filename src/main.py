@@ -7,10 +7,16 @@ from ultralytics import YOLO, settings
 from read_config import read_config
 import albumentations as A
 
+
+def string_to_int_tuple(string) -> tuple[int, ...]:
+    return tuple(map(int, string.split(',')))
+
 PIPELINE_TEST = True
 def main():
 
-    RUN_NAME_DETAILS = "PIPELINE_TEST" # Details to show in the name of the run, eg. "no augmentation"
+    RUN_CONFIG_FILENAME = "run_config_blur_augmentations.yaml"
+    RUN_NAME_DETAILS = RUN_CONFIG_FILENAME.removeprefix("run_config_").removesuffix(".yaml") # Details to show in the name of the run, eg. "no augmentation"
+
     PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
     MODEL_PATH = os.path.join(PROJECT_ROOT, 'models', 'yolo11s.pt')
     RUN_NAME_DETAILS = "PIPELINE_TEST"  # Details to show in the name of the run, eg. "no augmentation"
@@ -22,11 +28,11 @@ def main():
     else:
         DATA_CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'yolo_config.yaml')
 
-    RUN_CONFIG_PATH = os.path.join(PROJECT_ROOT, "config", "run_config_no_augmentations.yaml")
+    RUN_CONFIG_PATH = os.path.join(PROJECT_ROOT, "config", RUN_CONFIG_FILENAME)
     run_config = read_config(RUN_CONFIG_PATH)
 
-    RUN_NAME = f"baseline_{run_config["model_name"]}_{run_config["epochs"]}epochs_{RUN_NAME_DETAILS}_{run_config["image_size"]}_eric"
-    USER_DESCRIPTION = f"test"
+    RUN_NAME = f"baseline_{run_config["model_name"]}_{run_config["epochs"]}epochs_{RUN_NAME_DETAILS}_{run_config["image_size"]}_toudik"
+    USER_DESCRIPTION = f"Yolov11s trained on rail-bench dataset with basic augmentations (with blur and motion blur) and 300 epochs."
     run_description = pformat(run_config, indent=2, sort_dicts=False)
 
     description = f"{USER_DESCRIPTION} \n\n {run_description}"
@@ -66,9 +72,11 @@ def main():
 
     custom_augmentations = []
     if run_config.get("blur", False):
-        custom_augmentations.append(A.Blur(blur_limit=run_config["blur_limit"], p=run_config["blur_p"]))
+        custom_augmentations.append(A.Blur(blur_limit=string_to_int_tuple(run_config["blur_limit"]),
+                                           p=run_config["blur_p"]))
     if run_config.get("motion_blur", False):
-        custom_augmentations.append(A.MotionBlur(blur_limit=run_config["motion_blur_limit"], p=run_config["motion_blur_p"]))
+        custom_augmentations.append(A.MotionBlur(blur_limit=string_to_int_tuple(run_config["motion_blur_limit"]),
+                                                 p=run_config["motion_blur_p"]))
 
     if custom_augmentations:
         train_params.update({"augmentations": custom_augmentations})
