@@ -4,4 +4,14 @@
 # Visualze Bboxes
 ## How to run
 ``` 
-python scripts\visualize_bboxes.py  
+python scripts\visualize_bboxes.py 
+
+
+# Run Training
+- Execute main.py
+
+# Run Inference
+- Execute inference.py
+
+# Show Benchmark results of the inference
+- Execute calculate_railbench_benchmark.py 
