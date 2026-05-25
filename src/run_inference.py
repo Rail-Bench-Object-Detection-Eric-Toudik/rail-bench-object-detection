@@ -11,31 +11,29 @@ from pycocotools.cocoeval import COCOeval
 from ultralytics import YOLO
 from sahi.predict import predict
 
+from src.calculate_railbench_benchmark import BenchmarkCalculator
 
 # ---------------------------------------------------------------------
 # Paths / Config
 # ---------------------------------------------------------------------
-TEST_PIPELINE = True
+TEST_PIPELINE = False
+USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+OUTPUT_DIR = PROJECT_ROOT / "outputs"
 
 if TEST_PIPELINE:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config_pipeline_test.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "pipeline_test" / "annotations_pipeline_test.json"
     WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_yagd292m_model:v0"
 
-
 else:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
     WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_7dnut8bz_model:v0"
 
-OUTPUT_DIR = PROJECT_ROOT / "outputs"
 
 WANDB_PROJECT = "Rail-Bench-Object-Detection-Eric-Toudik"
-
-# Wähle zwischen SAHI und direkter Inference
-USE_SAHI = False  # Setze auf False für direkte Inference ohne SAHI
 
 # ---------------------------------------------------------------------
 # SAHI / Evaluation Parameters
@@ -68,10 +66,6 @@ else:
         f"conf{str(CONF_THRESHOLD).replace('.', '')}"
     )
 
-
-# ---------------------------------------------------------------------
-# W&B Model Download
-# ---------------------------------------------------------------------
 
 def download_model_from_wandb() -> Path:
     load_dotenv()
@@ -352,21 +346,12 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
         raise FileNotFoundError(f"No images found in {source_dir}")
     
     print(f"Found {len(image_paths)} images for inference")
-    
-    # Lade Ground-Truth, um image_id -> file_name zu bekommen
-    image_id_to_name = {}
-    if gt_coco_path and gt_coco_path.exists():
-        with open(gt_coco_path, "r", encoding="utf-8") as f:
-            gt = json.load(f)
-        image_id_to_name = {img["id"]: img["file_name"] for img in gt.get("images", [])}
-    
+
     # Führe Inference durch und sammle Ergebnisse
     predictions = []
     annotation_id = 1
     
-    for image_idx, image_path in enumerate(image_paths, 1):
-        # Bestimme image_id
-        image_id = image_idx
+    for count, image_path in enumerate(image_paths, 1):
         file_name = image_path.name
         
         # Führe Inference durch
@@ -399,7 +384,7 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
                     confidence = float(box.conf[0].item())
                     
                     prediction = {
-                        "image_id": image_id,
+                        "file_name": file_name,
                         "category_id": category_id,
                         "bbox": [bbox_x, bbox_y, bbox_w, bbox_h],
                         "area": bbox_w * bbox_h,
@@ -410,8 +395,8 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
                     predictions.append(prediction)
                     annotation_id += 1
         
-        if (image_idx) % 10 == 0:
-            print(f"  Processed {image_idx}/{len(image_paths)} images...")
+        if (count) % 10 == 0:
+            print(f"  Processed {count}/{len(image_paths)} images...")
     
     # Speichere Vorhersagen in COCO-Format
     output_dir = OUTPUT_DIR / RUN_NAME
@@ -556,6 +541,7 @@ def save_predictions_coco(pred_json_path: Path, gt_coco_path: Path | None, out_p
         pred_raw = json.load(f)
 
     # SAHI/COCO outputs are usually a list; falls ein dict geliefert wird, versuchen wir, die Liste zu extrahieren
+    # TODO can this be removed? (Not reuqired for direct at least)
     if isinstance(pred_raw, dict):
         # häufige keys: 'predictions', 'results', 'images', 'annotations'
         for key in ("predictions", "results", "images", "annotations", "detections"):
@@ -582,35 +568,15 @@ def save_predictions_coco(pred_json_path: Path, gt_coco_path: Path | None, out_p
         image_id_to_name = {img["id"]: img["file_name"] for img in gt.get("images", [])}
         available_file_names = {img["file_name"] for img in gt.get("images", [])}
     else:
-        # Fallback: benutze Image-Ordner aus data config (resolve_split_image_dir)
-        try:
-            image_dir = resolve_split_image_dir(DATA_CONFIG_PATH, SPLIT)
-            image_paths = sorted(
-                list(image_dir.glob("*.jpg"))
-                + list(image_dir.glob("*.jpeg"))
-                + list(image_dir.glob("*.png"))
-            )
-            available_file_names = {p.name for p in image_paths}
-            if available_file_names:
-                print(f"Using image files from {image_dir} to resolve file names ({len(available_file_names)} images)")
-                # Erzeuge eine image_id -> file_name Map analog zur yolo_labels_to_coco_gt Funktion
-                # (IDs werden sequentiell ab 1 in sortierter Reihenfolge vergeben)
-                image_id_to_name = {i + 1: p.name for i, p in enumerate(image_paths)}
-        except Exception as e:
-            print(f"Warning: could not resolve image dir from data config: {e}")
+        raise(f"Warning: could not resolve image dir from data config")
 
     results = []
     for p in preds:
-        # p kann bereits die gewünschte Struktur haben
+        # if preds contains the file name already
         file_name = p.get("file_name") or p.get("image_file") or None
 
         if file_name is None and "image_id" in p:
             file_name = image_id_to_name.get(p["image_id"])
-
-        if file_name is None:
-            # manche Formate nutzen 'image'-> {'file_name':...}
-            if "image" in p and isinstance(p["image"], dict):
-                file_name = p["image"].get("file_name")
 
         # Falls nur image_id vorhanden ist, mappe ggf. über GT
         if file_name is None and "image_id" in p and p.get("image_id") in image_id_to_name:
@@ -649,17 +615,9 @@ def save_predictions_coco(pred_json_path: Path, gt_coco_path: Path | None, out_p
                 cat_id = CATEGORY_NAME_TO_ID[cat_name]
 
         # final: falls noch nicht int, versuche zu casten
-        try:
-            cat_id = int(cat_id)
-        except Exception:
-            # Falls ungültig, lassen wir es durch und prüfen später
-            pass
+        cat_id = int(cat_id)
 
-        # YOLO gibt 0-indizierte Kategorien zurück (0-6), aber wir erwarten 1-indiziert (1-7)
-        # Falls cat_id in Bereich 0-6, um +1 verschieben
-        if isinstance(cat_id, int) and 0 <= cat_id <= 6:
-            cat_id = cat_id + 1
-
+        #todo add category_id+1?
         # bbox
         bbox = p.get("bbox") or p.get("box") or p.get("bounding_box")
         if bbox is None and "x" in p and "y" in p and "w" in p and "h" in p:
@@ -893,8 +851,7 @@ def main():
     model_path = download_model_from_wandb()
 
     source_dir = resolve_split_image_dir(DATA_CONFIG_PATH, SPLIT)
-
-    gt_coco_path = get_default_gt_coco_path()
+    gt_coco_path = DEFAULT_GT_COCO_PATH
 
     if not gt_coco_path.exists():
         raise FileNotFoundError(f"Ground-truth COCO file not found: {gt_coco_path}")
@@ -934,16 +891,16 @@ def main():
         pred_json_path=pred_json_path,
     )
 
-    metrics = evaluate_coco(
-        gt_json_path=gt_coco_path,
-        pred_json_path=pred_json_path,
-    )
+   # metrics = evaluate_coco(
+   #     gt_json_path=gt_coco_path,
+    #    pred_json_path=pred_json_path,
+   # )
 
-    print("\nCOCO Metrics:")
-    for key, value in metrics.items():
-        print(f"{key}: {value:.4f}")
+    #print("\nCOCO Metrics:")
+    #for key, value in metrics.items():
+    #    print(f"{key}: {value:.4f}")
 
-    wandb.log(metrics)
+    #wandb.log(metrics)
 
     eval_artifact = wandb.Artifact(
         name=f"{RUN_NAME}_eval_files",
@@ -961,6 +918,13 @@ def main():
 
     wandb.finish()
 
+    benchmark_calculator = BenchmarkCalculator(test_pipeline=TEST_PIPELINE)
+    benchmark_calculator.run_railbench_format_check(is_railbench_test=False)
+    benchmark_calculator.prepare_and_run_object_eval(
+        split="val",
+        detector_name=RUN_NAME,
+        project_name="eric-toudik-railbench",
+    )
 
 if __name__ == "__main__":
     main()
