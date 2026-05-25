@@ -617,7 +617,6 @@ def save_predictions_coco(pred_json_path: Path, gt_coco_path: Path | None, out_p
         # final: falls noch nicht int, versuche zu casten
         cat_id = int(cat_id)
 
-        #todo add category_id+1?
         # bbox
         bbox = p.get("bbox") or p.get("box") or p.get("bounding_box")
         if bbox is None and "x" in p and "y" in p and "w" in p and "h" in p:

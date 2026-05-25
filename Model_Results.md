@@ -128,7 +128,6 @@
 | 0.95 | 0.0109 | 0.0104 | 0.0031 | 0.0112 | 0.0058 | 0.0002 | 0.0005 |
 
 # baseline_yolo11s_300epochs_basic_augmentation_1024_toudik
-## Config
 ## Training Configuration
 
 | Category | Parameter | Value |
@@ -252,3 +251,29 @@
 | 0.85 | 0.1126 | 0.0989 | 0.1083 | 0.0642 | 0.0128 | 0.0578 | 0.0200 |
 | 0.90 | 0.0434 | 0.0505 | 0.0465 | 0.0241 | 0.0069 | 0.0325 | 0.0147 |
 | 0.95 | 0.0061 | 0.0081 | 0.0015 | 0.0110 | 0.0009 | 0.0055 | 0.0058 |
+
+
+# SAHI on Inference only with  baseline_yolo11s_300epochs_basic_augmentation_1024_toudik
+
+
+| Category               | Parameter   |         Value |
+|------------------------|-------------|--------------:|
+| Training               | epochs      |           300 |
+| Training               | batch_size  |            12 |
+| Training               | image_size  |          1024 |
+| Training               | model_name  |     `yolo11s` |
+| Training               | seed        |            42 |
+| Learning Rate          | lr0         |          0.01 |
+| Learning Rate          | lrf         |          0.01 |
+| Augmentation           | auto_augment | `randaugment` |
+| Color Augmentation     | hsv_h       |          0.01 |
+| Color Augmentation     | hsv_s       |           0.5 |
+| Color Augmentation     | hsv_v       |           0.3 |
+| Geometric Augmentation | translate   |           0.1 |
+| Geometric Augmentation | scale       |           0.4 |
+| Geometric Augmentation | fliplr      |           0.5 |
+| SAHI                   | Slice_Height|          1024 |
+| SAHI                   | SLICE_WIDTH |          1024 |
+| SAHI                   | OVERLAP_HEIGHT_RATIO|           0.2 |
+| SAHI                   | OVERLAP_WIDTH_RATIO|           0.2 |
+
