@@ -11,27 +11,27 @@ import albumentations as A
 def string_to_int_tuple(string) -> tuple[int, ...]:
     return tuple(map(int, string.split(',')))
 
-PIPELINE_TEST = True
+PIPELINE_TEST = False
 def main():
 
-    RUN_CONFIG_FILENAME = "run_config_blur_augmentations.yaml"
+    RUN_CONFIG_FILENAME = "run_config_sahi_basic_augmentations.yaml"
     RUN_NAME_DETAILS = RUN_CONFIG_FILENAME.removeprefix("run_config_").removesuffix(".yaml") # Details to show in the name of the run, eg. "no augmentation"
 
     PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
     MODEL_PATH = os.path.join(PROJECT_ROOT, 'models', 'yolo11s.pt')
-    RUN_NAME_DETAILS = "PIPELINE_TEST"  # Details to show in the name of the run, eg. "no augmentation"
+    RUN_NAME_DETAILS = "SAHI_Training"  # Details to show in the name of the run, eg. "no augmentation"
 
     if PIPELINE_TEST:
         RUN_NAME_DETAILS = f"PIPELINE_TEST_{RUN_NAME_DETAILS}"  # Make sure to prefix the pipeline Test!
         DATA_CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'yolo_config_pipeline_test.yaml')
 
     else:
-        DATA_CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'yolo_config.yaml')
+        DATA_CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'yolo_config_sahi_train.yaml')
 
     RUN_CONFIG_PATH = os.path.join(PROJECT_ROOT, "config", RUN_CONFIG_FILENAME)
     run_config = read_config(RUN_CONFIG_PATH)
 
-    RUN_NAME = f"baseline_{run_config["model_name"]}_{run_config["epochs"]}epochs_{RUN_NAME_DETAILS}_{run_config["image_size"]}_toudik"
+    RUN_NAME = f"baseline_{run_config["model_name"]}_{run_config["epochs"]}epochs_{RUN_NAME_DETAILS}_{run_config["image_size"]}_eric"
     USER_DESCRIPTION = f"Yolov11s trained on rail-bench dataset with basic augmentations (with blur and motion blur) and 300 epochs."
     run_description = pformat(run_config, indent=2, sort_dicts=False)
 
@@ -67,7 +67,10 @@ def main():
         # Geometric augmentations
         "translate": run_config["translate"],
         "scale": run_config["scale"],
-        "fliplr": run_config["fliplr"]
+        "fliplr": run_config["fliplr"],
+        "workers": run_config["workers"],
+        "cache": False,
+
     }
 
     custom_augmentations = []
