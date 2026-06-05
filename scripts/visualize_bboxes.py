@@ -39,6 +39,52 @@ def _resolve_split_paths(split: str) -> tuple[Path, Path]:
     return annotations_path, images_dir
 
 
+def _resolve_image_path(images_dir: Path, file_name: str, annotations_path: Path) -> Path:
+    direct_path = images_dir / file_name
+    if direct_path.exists():
+        return direct_path
+
+    split_dir = annotations_path.parent.name.lower().strip()
+    if split_dir in {"train", "val", "test"}:
+        split_path = images_dir / split_dir / file_name
+        if split_path.exists():
+            return split_path
+
+    return direct_path
+
+
+def _resolve_annotations_file(annotations_path: Path, images_dir: Path) -> Path:
+    if annotations_path.is_file():
+        return annotations_path
+
+    if not annotations_path.is_dir():
+        raise FileNotFoundError(f"Annotation path does not exist: {annotations_path}")
+
+    candidate_files = sorted(annotations_path.rglob("*.json"))
+    if not candidate_files:
+        raise FileNotFoundError(f"No JSON files found in directory: {annotations_path}")
+
+    if len(candidate_files) == 1:
+        return candidate_files[0]
+
+    for candidate in candidate_files:
+        try:
+            with candidate.open("r", encoding="utf-8") as f:
+                coco = json.load(f)
+        except Exception:
+            continue
+
+        images: list[dict[str, Any]] = coco.get("images", [])
+        if not images:
+            continue
+
+        sample_images = images[:5]
+        if all(_resolve_image_path(images_dir, image_info["file_name"], candidate).exists() for image_info in sample_images):
+            return candidate
+
+    return candidate_files[0]
+
+
 def _infer_split_name(annotations_path: Path, images_dir: Path) -> str:
     annotations_name = annotations_path.stem.lower()
     images_name = images_dir.name.lower()
@@ -59,12 +105,13 @@ def _render_coco_images(
 ) -> tuple[list[Image.Image], list[str]]:
     annotations_path = Path(annotations_path)
     images_dir = Path(images_dir)
+    annotations_path = _resolve_annotations_file(annotations_path, images_dir)
 
     with annotations_path.open("r", encoding="utf-8") as f:
         coco = json.load(f)
 
     images: list[dict[str, Any]] = coco.get("images", [])
-    annotations: list[dict[str, Any]] = coco.get("coco_annotations", [])
+    annotations: list[dict[str, Any]] = coco.get("annotations", [])
     categories: list[dict[str, Any]] = coco.get("categories", [])
 
     if not images:
@@ -93,7 +140,7 @@ def _render_coco_images(
     rendered_images: list[Image.Image] = []
     sampled_titles: list[str] = []
     for image_info in sampled_images:
-        image_path = images_dir / image_info["file_name"]
+        image_path = _resolve_image_path(images_dir, image_info["file_name"], annotations_path)
         if not image_path.exists():
             raise FileNotFoundError(f"Image referenced in coco_annotations does not exist: {image_path}")
 
@@ -289,7 +336,7 @@ def _show_images_in_single_window(
         )
         last_render_signature = render_signature
 
-    def _complete_initial_render() -> None:
+    def _complete_initial_render(_ignored: Any | None = None) -> None:
         nonlocal startup_ready, startup_render_job
         startup_render_job = None
         startup_ready = True
@@ -398,7 +445,7 @@ def _show_images_in_single_window(
         if not startup_ready:
             if startup_render_job is not None:
                 root.after_cancel(startup_render_job)
-            startup_render_job = root.after(150, _complete_initial_render)
+            startup_render_job = root.after(150, _complete_initial_render, None)
             return
 
         if resize_job is not None:
@@ -407,7 +454,7 @@ def _show_images_in_single_window(
 
     root.bind("<Configure>", _on_resize)
 
-    startup_render_job = root.after(150, _complete_initial_render)
+    startup_render_job = root.after(150, _complete_initial_render, None)
     root.mainloop()
 
 
@@ -472,7 +519,9 @@ def _build_parser() -> argparse.ArgumentParser:
     base_dir = Path(__file__).resolve().parent.parent
 
     parser.add_argument(
+        "--annotations",
         "--coco_annotations",
+        dest="coco_annotations",
         type=Path,
         default=base_dir / "data" / "coco_annotations" / "objects" / "annotations_train.json",
         help="Path to COCO JSON coco_annotations file.",
@@ -509,7 +558,7 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
     rendered = show_sample_images_with_bboxes(
-        annotations_path=args.annotations,
+        annotations_path=args.coco_annotations,
         images_dir=args.images_dir,
         num_images=args.num_images,
         seed=args.seed,
