@@ -264,18 +264,10 @@ def train_loop(config):
         num_workers=config["num_workers"], collate_fn=collate_fn, pin_memory=True
     )
 
-    # Model config
-    model_cfg = {
-        "backbone": {"image_size": config["image_size"]},
-        "encoder": {},
-        "decoder": {},
-        "postprocessor": {"num_classes": config["num_classes"]}
-    }
-
     # Load model using YOUR get_model()
-    model_enum = ECDetModel(config["model"])
+    model_enum = ECDetModel[config["model"]]
     print(f"Loading pretrained ECDet model: {model_enum.value}")
-    model = get_model(model_cfg, model_enum)
+    model = get_model(model_enum)
     model.to(device)
 
     # Freeze schedule phase 1
