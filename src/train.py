@@ -273,7 +273,7 @@ def train_loop(config):
     }
 
     # Load model using YOUR get_model()
-    model_enum = ECDetModel(config["model_repo"])
+    model_enum = ECDetModel(config["model"])
     print(f"Loading pretrained ECDet model: {model_enum.value}")
     model = get_model(model_cfg, model_enum)
     model.to(device)
@@ -299,8 +299,11 @@ def train_loop(config):
 
     # WandB
     if config["use_wandb"]:
-        wandb.login(key=os.environ.get("WANDB_API_KEY"))
-        with wandb.init(project=config["wandb_project"], dir=wandb_dir, config=config):
+        run_name = f"ecdet_{config['model']}_{config['epochs']}epochs_{config['image_size']}"
+        description = f"Fine-tuning {config['model']} on Rail-Bench Object Detection dataset."
+        tags = [config['model']]
+
+        with wandb.init(project=config["wandb_project"], name=run_name, notes=description, tags=tags, dir=wandb_dir, config=config):
             _train(config, model, train_loader, val_loader, optimizer, scheduler, scaler, device, output_dir)
     else:
         _train(config, model, train_loader, val_loader, optimizer, scheduler, scaler, device, output_dir)
