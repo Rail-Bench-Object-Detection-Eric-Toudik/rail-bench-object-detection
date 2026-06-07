@@ -14,13 +14,11 @@ This script:
 - Uses COCO evaluation (mAP)
 """
 
-import argparse
 import os
 import time
 import json
 import random
-from pathlib import Path
-from typing import List, Dict, Any
+from typing import List
 
 import torch
 import torch.nn as nn
@@ -29,13 +27,14 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import CocoDetection
 from torch.cuda.amp import autocast, GradScaler
+from dotenv import load_dotenv
 
 import wandb
 
 from ecdet import get_model, ECDetModel
+from read_config import read_config
 
 # COCO evaluation
-from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
 
@@ -227,46 +226,54 @@ def coco_evaluate(model, dataloader, device, output_dir, image_size):
 # Training loop
 # ---------------------------------------------------------
 
-def train_loop(args):
-    set_seed(args.seed)
+def train_loop(config):
+    set_seed(config["seed"])
 
-    device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
-    make_dirs([args.output_dir, args.wandb_dir, args.logs_dir])
+    device = torch.device("cuda" if torch.cuda.is_available() and not config["no_cuda"] else "cpu")
+
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+    output_dir = os.path.join(PROJECT_ROOT, "logs")
+    wandb_dir = os.path.join(PROJECT_ROOT, "src", "wandb")
+    data_root = os.path.join(PROJECT_ROOT, "data")
+    train_ann = os.path.join(data_root, "coco_annotations", "objects", "annotations_train.json")
+    val_ann = os.path.join(data_root, "coco_annotations", "objects", "annotations_val.json")
+
+    make_dirs([output_dir, wandb_dir])
 
     # Dataset
-    train_tf = build_transforms(args.image_size, True)
-    val_tf = build_transforms(args.image_size, False)
+    train_tf = build_transforms(config["image_size"], True)
+    val_tf = build_transforms(config["image_size"], False)
 
     train_dataset = CocoWrapper(
-        root=os.path.join(args.data_root, "train"),
-        annFile=os.path.join(args.data_root, args.train_ann),
+        root=os.path.join(data_root, "images", "train"),
+        annFile=train_ann,
         transforms=train_tf
     )
     val_dataset = CocoWrapper(
-        root=os.path.join(args.data_root, "val"),
-        annFile=os.path.join(args.data_root, args.val_ann),
+        root=os.path.join(data_root, "images", "val"),
+        annFile=val_ann,
         transforms=val_tf
     )
 
     train_loader = DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True,
-        num_workers=args.num_workers, collate_fn=collate_fn, pin_memory=True
+        train_dataset, batch_size=config["batch_size"], shuffle=True,
+        num_workers=config["num_workers"], collate_fn=collate_fn, pin_memory=True
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.num_workers, collate_fn=collate_fn, pin_memory=True
+        val_dataset, batch_size=config["batch_size"], shuffle=False,
+        num_workers=config["num_workers"], collate_fn=collate_fn, pin_memory=True
     )
 
     # Model config
     model_cfg = {
-        "backbone": {"image_size": args.image_size},
+        "backbone": {"image_size": config["image_size"]},
         "encoder": {},
         "decoder": {},
-        "postprocessor": {"num_classes": args.num_classes}
+        "postprocessor": {"num_classes": config["num_classes"]}
     }
 
     # Load model using YOUR get_model()
-    model_enum = ECDetModel(args.model_repo)
+    model_enum = ECDetModel(config["model_repo"])
     print(f"Loading pretrained ECDet model: {model_enum.value}")
     model = get_model(model_cfg, model_enum)
     model.to(device)
@@ -275,50 +282,50 @@ def train_loop(args):
     freeze_backbone(model)
 
     # Optimizer
-    param_groups = get_param_groups(model, args.lr_head, args.lr_backbone, args.weight_decay)
+    param_groups = get_param_groups(model, config["lr_head"], config["lr_backbone"], config["weight_decay"])
     optimizer = optim.AdamW(param_groups)
-    scaler = GradScaler(enabled=not args.no_amp)
+    scaler = GradScaler(enabled=not config["no_amp"])
 
     # LR scheduler
-    total_steps = len(train_loader) * args.epochs
+    total_steps = len(train_loader) * config["epochs"]
 
     def lr_lambda(step):
-        if step < args.warmup_steps:
-            return step / max(1, args.warmup_steps)
-        progress = (step - args.warmup_steps) / max(1, total_steps - args.warmup_steps)
+        if step < config["warmup_steps"]:
+            return step / max(1, config["warmup_steps"])
+        progress = (step - config["warmup_steps"]) / max(1, total_steps - config["warmup_steps"])
         return 0.5 * (1 + torch.cos(torch.tensor(progress * 3.1415926535))).item()
 
     scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     # WandB
-    if args.use_wandb:
+    if config["use_wandb"]:
         wandb.login(key=os.environ.get("WANDB_API_KEY"))
-        with wandb.init(project=args.wandb_project, dir=args.wandb_dir, config=vars(args)):
-            _train(args, model, train_loader, val_loader, optimizer, scheduler, scaler, device)
+        with wandb.init(project=config["wandb_project"], dir=wandb_dir, config=config):
+            _train(config, model, train_loader, val_loader, optimizer, scheduler, scaler, device, output_dir)
     else:
-        _train(args, model, train_loader, val_loader, optimizer, scheduler, scaler, device)
+        _train(config, model, train_loader, val_loader, optimizer, scheduler, scaler, device, output_dir)
 
 
-def _train(args, model, train_loader, val_loader, optimizer, scheduler, scaler, device):
+def _train(config, model, train_loader, val_loader, optimizer, scheduler, scaler, device, output_dir):
     best_map = -1.0
     global_step = 0
 
-    for epoch in range(args.epochs):
+    for epoch in range(config["epochs"]):
         model.train()
         epoch_loss = 0.0
         t0 = time.time()
 
         # Freeze schedule
-        if epoch == args.freeze_phase_1_epochs:
+        if epoch == config["freeze_phase_1_epochs"]:
             print(f"Epoch {epoch}: partial unfreeze")
-            partial_unfreeze_encoder(model, args.partial_unfreeze_last_n)
-            optimizer = optim.AdamW(get_param_groups(model, args.lr_head, args.lr_backbone, args.weight_decay))
+            partial_unfreeze_encoder(model, config["partial_unfreeze_last_n"])
+            optimizer = optim.AdamW(get_param_groups(model, config["lr_head"], config["lr_backbone"], config["weight_decay"]))
             scheduler = optim.lr_scheduler.LambdaLR(optimizer, scheduler.lr_lambdas[0])
 
-        if epoch == args.partial_unfreeze_until:
+        if epoch == config["partial_unfreeze_until"]:
             print(f"Epoch {epoch}: full unfreeze")
             unfreeze_backbone(model)
-            optimizer = optim.AdamW(get_param_groups(model, args.lr_head * 0.5, args.lr_backbone * 0.5, args.weight_decay))
+            optimizer = optim.AdamW(get_param_groups(model, config["lr_head"] * 0.5, config["lr_backbone"] * 0.5, config["weight_decay"]))
             scheduler = optim.lr_scheduler.LambdaLR(optimizer, scheduler.lr_lambdas[0])
 
         # Training
@@ -326,7 +333,7 @@ def _train(args, model, train_loader, val_loader, optimizer, scheduler, scaler, 
             batch = torch.stack(images).to(device)
 
             optimizer.zero_grad()
-            with autocast(enabled=not args.no_amp):
+            with torch.amp.autocast(device_type="cuda", enabled=not config["no_amp"]):
                 outputs = model(batch, orig_target_sizes=[t for t in targets])
 
                 if isinstance(outputs, dict) and "loss" in outputs:
@@ -338,7 +345,7 @@ def _train(args, model, train_loader, val_loader, optimizer, scheduler, scaler, 
 
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
             scaler.step(optimizer)
             scaler.update()
             scheduler.step()
@@ -346,9 +353,9 @@ def _train(args, model, train_loader, val_loader, optimizer, scheduler, scaler, 
             epoch_loss += loss.item()
             global_step += 1
 
-            if step % args.log_interval == 0:
+            if step % config["log_interval"] == 0:
                 print(f"[Epoch {epoch}][{step}/{len(train_loader)}] loss={loss.item():.4f}")
-                if wandb.run:
+                if config["use_wandb"] and wandb.run:
                     wandb.log({"loss": loss.item(), "epoch": epoch}, step=global_step)
 
         print(f"Epoch {epoch} finished, avg_loss={epoch_loss/len(train_loader):.4f}")
@@ -361,64 +368,19 @@ def _train(args, model, train_loader, val_loader, optimizer, scheduler, scaler, 
             "scheduler_state": scheduler.state_dict(),
             "best_map": best_map,
         }
-        torch.save(ckpt, os.path.join(args.output_dir, "last_checkpoint.pth"))
+        torch.save(ckpt, os.path.join(output_dir, "last_checkpoint.pth"))
 
         # Evaluation
-        if (epoch + 1) % args.eval_interval_epochs == 0:
-            mAP = coco_evaluate(model, val_loader, device, args.output_dir, args.image_size)
+        if (epoch + 1) % config["eval_interval_epochs"] == 0:
+            mAP = coco_evaluate(model, val_loader, device, output_dir, config["image_size"])
             print(f"Validation mAP: {mAP:.4f}")
-            if wandb.run:
+            if config["use_wandb"] and wandb.run:
                 wandb.log({"val/mAP": mAP, "epoch": epoch}, step=global_step)
 
             if mAP > best_map:
                 best_map = mAP
-                torch.save(ckpt, os.path.join(args.output_dir, "best_checkpoint.pth"))
+                torch.save(ckpt, os.path.join(output_dir, "best_checkpoint.pth"))
                 print(f"New best model saved with mAP={best_map:.4f}")
-
-
-# ---------------------------------------------------------
-# CLI
-# ---------------------------------------------------------
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--model-repo", default="ECDet_M")
-    parser.add_argument("--data-root", required=True)
-    parser.add_argument("--train-ann", default="annotations/instances_train.json")
-    parser.add_argument("--val-ann", default="annotations/instances_val.json")
-
-    parser.add_argument("--output-dir", default="logs")
-    parser.add_argument("--wandb-dir", default="src/wandb")
-    parser.add_argument("--logs-dir", default="logs")
-
-    parser.add_argument("--epochs", type=int, default=300)
-    parser.add_argument("--batch-size", type=int, default=12)
-    parser.add_argument("--image-size", type=int, default=1024)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--num-workers", type=int, default=8)
-
-    parser.add_argument("--lr-head", type=float, default=1e-4)
-    parser.add_argument("--lr-backbone", type=float, default=1e-5)
-    parser.add_argument("--weight-decay", type=float, default=1e-4)
-    parser.add_argument("--warmup-steps", type=int, default=500)
-
-    parser.add_argument("--freeze-phase-1-epochs", type=int, default=50)
-    parser.add_argument("--partial-unfreeze-until", type=int, default=150)
-    parser.add_argument("--partial-unfreeze-last-n", type=int, default=4)
-
-    parser.add_argument("--eval-interval-epochs", type=int, default=1)
-    parser.add_argument("--use-wandb", action="store_true", default=True)
-    parser.add_argument("--wandb-project", default="Rail-Bench-Object-Detection-Eric-Toudik")
-
-    parser.add_argument("--no-amp", action="store_true")
-    parser.add_argument("--no-cuda", action="store_true")
-    parser.add_argument("--log-interval", type=int, default=50)
-    parser.add_argument("--max-grad-norm", type=float, default=1.0)
-
-    parser.add_argument("--num-classes", type=int, default=7)
-
-    return parser.parse_args()
 
 
 # ---------------------------------------------------------
@@ -426,6 +388,11 @@ def parse_args():
 # ---------------------------------------------------------
 
 if __name__ == "__main__":
-    args = parse_args()
-    make_dirs([args.output_dir, args.wandb_dir, args.logs_dir])
-    train_loop(args)
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+    CONFIG_PATH = os.path.join(PROJECT_ROOT, "config", "ecdet_finetune_config.yaml")
+    config = read_config(CONFIG_PATH)
+    if config["use_wandb"]:
+        load_dotenv()
+        WANDB_API_KEY = os.getenv('WANDB_API_KEY')
+        wandb.login(key=WANDB_API_KEY)
+    train_loop(config)
