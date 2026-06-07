@@ -300,8 +300,8 @@ def train_loop(config):
     # WandB
     if config["use_wandb"]:
         run_name = f"ecdet_{config['model']}_{config['epochs']}epochs_{config['image_size']}"
-        description = f"Fine-tuning {config['model']} on Rail-Bench Object Detection dataset."
-        tags = [config['model']]
+        description = f"Fine-tuning ECDet {config['model']} on Rail-Bench Object Detection dataset."
+        tags = ["EdgeCrafter", "ECDet", config['model']]
 
         with wandb.init(project=config["wandb_project"], name=run_name, notes=description, tags=tags, dir=wandb_dir, config=config):
             _train(config, model, train_loader, val_loader, optimizer, scheduler, scaler, device, output_dir)
