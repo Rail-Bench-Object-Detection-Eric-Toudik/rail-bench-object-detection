@@ -2,18 +2,18 @@ task: detection
 
 evaluator:
   type: CocoEvaluator
-  iou_types: ['bbox', ]
-  verbose: False
+  iou_types: ['bbox']
+  verbose: True
 
-num_classes: 777 # your dataset classes
-remap_mscoco_category: False
+num_classes: 7 # your dataset classes
+remap_mscoco_category: True
 
 train_dataloader:
   type: DataLoader
   dataset:
     type: CocoDetection
-    img_folder: /data/yourdataset/train
-    ann_file: /data/yourdataset/train/train.json
+    img_folder: ../../../data/images/train
+    ann_file: ../../../data/coco_annotations/objects/annotations_train_area.json
     return_masks: False
     transforms:
       type: Compose
@@ -29,8 +29,8 @@ val_dataloader:
   type: DataLoader
   dataset:
     type: CocoDetection
-    img_folder: /data/yourdataset/val
-    ann_file: /data/yourdataset/val/val.json
+    img_folder: ../../../data/images/val
+    ann_file: ../../../data/coco_annotations/objects/annotations_val_area.json
     return_masks: False
     transforms:
       type: Compose
