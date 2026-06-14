@@ -12,6 +12,7 @@ backbone:
   patch_size: 16
   proj_dim: null
   skip_load_backbone: false
+  weights_path: ../models/EdgeCrafter/ecdetseg/ecvits/ecvitt.pth
 
 decoder:
   activation: silu
@@ -39,7 +40,7 @@ decoder:
   learn_query_content: false
   mask_downsample_ratio: null
   nhead: 8
-  num_classes: 80
+  num_classes: 7
   num_denoising: 100
   num_layers: 4
   num_levels: 3
@@ -79,7 +80,7 @@ encoder:
   - 2
   -
 postprocessor:
-  num_classes: 80
+  num_classes: 7
   num_top_queries: 300
-  remap_mscoco_category: false
+  remap_mscoco_category: true
   use_focal_loss: true
