@@ -40,4 +40,5 @@ use_sahi: True
 slice_height: 2048
 slice_width : 768
 overlap_height_ratio : 0.2
-overlap_width_ratio : 0.2
+overlap_width_ratio : 0.3
+min_area_ratio:  0.2

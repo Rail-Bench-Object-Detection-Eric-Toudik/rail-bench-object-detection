@@ -597,3 +597,69 @@
 | 0.85 | 0.1632 | 0.2016 | 0.0661 | 0.0236 | 0.0396 | 0.1040 | 0.0368 |
 | 0.90 | 0.0524 | 0.1039 | 0.0308 | 0.0042 | 0.0220 | 0.0461 | 0.0216 |
 | 0.95 | 0.0115 | 0.0195 | 0.0088 | 0.0017 | 0.0003 | 0.0068 | 0.0064 |
+
+
+
+#  Oversampling (baseline_yolo11s_300epochs_basic_augmentation_1024_toudik)
+
+## Training Configuration
+
+| Category               | Parameter |         Value |
+|------------------------|---|--------------:|
+| Training               | epochs |           300 |
+| Training               | batch_size |            12 |
+| Training               | image_size |          1024 |
+| Training               | model_name |     `yolo11s` |
+| Training               | seed |            42 |
+| Learning Rate          | lr0 |          0.01 |
+| Learning Rate          | lrf |          0.01 |
+| Augmentation           | auto_augment | `randaugment` |
+| Color Augmentation     | hsv_h |          0.01 |
+| Color Augmentation     | hsv_s |           0.5 |
+| Color Augmentation     | hsv_v |           0.3 |
+| Geometric Augmentation | translate |           0.1 |
+| Geometric Augmentation | scale |           0.4 |
+| Geometric Augmentation | fliplr |           0.5 |
+| Oversampling           | ROAD_VEHICLE_FACTOR |             2 |
+| Oversampling  | BICYCLE_FACTOR |           4 |
+
+
+## Evaluation Results: Direct Inference
+
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.1608 |
+| AP50 | 0.3051 |
+| AP75 | 0.1473 |
+| APeasy | 0.3164 |
+| APmoderate | 0.2319 |
+| APhard | 0.1608 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.3869 |
+| ARmoderate | 0.2857 |
+| ARhard | 0.1974 |
+| AR1 | 0.0774 |
+| AR10 | 0.1804 |
+| AR100 | 0.1974 |
+| AR200 | 0.1974 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal | signal_pole | road_vehicle | person | train | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.5123 | 0.3270 | 0.1943 | 0.2774 | 0.4356 | 0.3712 | 0.0180 |
+| 0.55 | 0.4904 | 0.3098 | 0.1582 | 0.2516 | 0.4035 | 0.3376 | 0.0161 |
+| 0.60 | 0.4571 | 0.2740 | 0.1277 | 0.2209 | 0.3741 | 0.3108 | 0.0161 |
+| 0.65 | 0.4134 | 0.2516 | 0.0973 | 0.1959 | 0.3236 | 0.2885 | 0.0092 |
+| 0.70 | 0.3478 | 0.2121 | 0.0687 | 0.1593 | 0.2632 | 0.2528 | 0.0027 |
+| 0.75 | 0.2787 | 0.1817 | 0.0427 | 0.1126 | 0.1910 | 0.2216 | 0.0027 |
+| 0.80 | 0.1926 | 0.1500 | 0.0254 | 0.0768 | 0.1095 | 0.1807 | 0.0027 |
+| 0.85 | 0.1113 | 0.1040 | 0.0131 | 0.0533 | 0.0586 | 0.1316 | 0.0027 |
+| 0.90 | 0.0431 | 0.0495 | 0.0099 | 0.0234 | 0.0208 | 0.0560 | 0.0005 |
+| 0.95 | 0.0112 | 0.0069 | 0.0000 | 0.0107 | 0.0077 | 0.0030 | 0.0005 |

@@ -17,7 +17,7 @@ from src.calculate_railbench_benchmark import BenchmarkCalculator
 # Paths / Config
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
-USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
+USE_SAHI = False  # Set  False for direct/"normal" inference instead of sahi
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
@@ -30,7 +30,7 @@ if TEST_PIPELINE:
 else:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
-    WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_miplx8r3_model:v0"
+    WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_b605bnx5_model:v0"
 
 
 WANDB_PROJECT = "Rail-Bench-Object-Detection-Eric-Toudik"
