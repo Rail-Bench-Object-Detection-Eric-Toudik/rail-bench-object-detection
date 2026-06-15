@@ -76,4 +76,10 @@ def get_model(model: ECDetModel = ECDetModel.MEDIUM):
 
     config = read_config(config_path)
 
-    return ECDet.from_pretrained(model.value, config=config)
+    # First, instantiate the model with the configuration
+    #initialized_model = ECDet(config)
+
+    # Then, load the pretrained weights onto the instantiated model
+    #pretrained_model = initialized_model.from_pretrained(model.value)
+    ecdet = ECDet(config).from_pretrained(model.value)
+    return ecdet
