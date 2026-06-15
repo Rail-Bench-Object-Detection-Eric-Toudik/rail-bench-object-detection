@@ -17,7 +17,7 @@ from src.calculate_railbench_benchmark import BenchmarkCalculator
 # Paths / Config
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
-USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
+USE_SAHI = False  # Set  False for direct/"normal" inference instead of sahi
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
@@ -30,7 +30,7 @@ if TEST_PIPELINE:
 else:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
-    WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_7dnut8bz_model:v0"
+    WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_b605bnx5_model:v0"
 
 
 WANDB_PROJECT = "Rail-Bench-Object-Detection-Eric-Toudik"
@@ -41,10 +41,10 @@ WANDB_PROJECT = "Rail-Bench-Object-Detection-Eric-Toudik"
 
 SPLIT = "val"
 
-SLICE_HEIGHT = 1024
-SLICE_WIDTH = 1024
+SLICE_HEIGHT = 2048
+SLICE_WIDTH = 768
 OVERLAP_HEIGHT_RATIO = 0.2
-OVERLAP_WIDTH_RATIO = 0.2
+OVERLAP_WIDTH_RATIO = 0.3
 
 # Für mAP-Evaluation bewusst niedrig wählen.
 # Für reine Visualisierung wäre 0.25 sinnvoller.
@@ -526,7 +526,13 @@ def _validate_bbox(bbox) -> list:
     return bbox_list
 
 
-def save_predictions_coco(pred_json_path: Path, gt_coco_path: Path | None, out_path: Path, score_threshold: float = 0.0) -> Path:
+def save_predictions_coco(
+    pred_json_path: Path,
+    gt_coco_path: Path | None,
+    out_path: Path,
+    score_threshold: float = 0.0,
+    category_id_offset: int | None = None,
+) -> Path:
     """
     Lädt ein COCO-artiges Prediction-JSON (Liste von Dicts) und speichert es im gewünschten
     Testformat (Liste von Objekten mit keys: file_name, category_id, bbox, score).
@@ -536,6 +542,9 @@ def save_predictions_coco(pred_json_path: Path, gt_coco_path: Path | None, out_p
                     Falls None oder nicht existent, wird der Image-Ordner aus config verwendet.
     - out_path: Ausgabepfad (z.B. OUTPUT_DIR / 'pred_test.json')
     - score_threshold: optional, nur Vorhersagen mit score >= threshold werden gespeichert
+    - category_id_offset: optionaler Offset fuer numerische Prediction-IDs.
+                          SAHI/Ultralytics liefert 0..6, RAIL-BENCH erwartet 1..7.
+                          None erkennt 0-basierte IDs automatisch.
     """
     with open(pred_json_path, "r", encoding="utf-8") as f:
         pred_raw = json.load(f)
@@ -568,7 +577,21 @@ def save_predictions_coco(pred_json_path: Path, gt_coco_path: Path | None, out_p
         image_id_to_name = {img["id"]: img["file_name"] for img in gt.get("images", [])}
         available_file_names = {img["file_name"] for img in gt.get("images", [])}
     else:
-        raise(f"Warning: could not resolve image dir from data config")
+        raise RuntimeError("Warning: could not resolve image dir from data config")
+
+    raw_category_ids = []
+    for pred in preds:
+        if not isinstance(pred, dict) or "category_id" not in pred:
+            continue
+        try:
+            raw_category_ids.append(int(pred["category_id"]))
+        except (TypeError, ValueError):
+            continue
+
+    if category_id_offset is None:
+        category_id_offset = 1 if raw_category_ids and min(raw_category_ids) == 0 else 0
+    if category_id_offset == 1:
+        print("Detected 0-based prediction category_ids. Mapping them to 1-based RAIL-BENCH category_ids.")
 
     results = []
     for p in preds:
@@ -600,11 +623,18 @@ def save_predictions_coco(pred_json_path: Path, gt_coco_path: Path | None, out_p
             continue
 
         # Kategorie
-        cat_id = p.get("category_id") or p.get("category") or None
+        cat_id = None
+        cat_id_is_numeric_prediction = False
+        if "category_id" in p:
+            cat_id = p["category_id"]
+            cat_id_is_numeric_prediction = True
+        elif "category" in p:
+            cat_id = p["category"]
         if isinstance(cat_id, str):
             # wenn Name gegeben, mappe
             if cat_id.isdigit():
                 cat_id = int(cat_id)
+                cat_id_is_numeric_prediction = True
             elif cat_id in CATEGORY_NAME_TO_ID:
                 cat_id = CATEGORY_NAME_TO_ID[cat_id]
 
@@ -616,6 +646,8 @@ def save_predictions_coco(pred_json_path: Path, gt_coco_path: Path | None, out_p
 
         # final: falls noch nicht int, versuche zu casten
         cat_id = int(cat_id)
+        if cat_id_is_numeric_prediction:
+            cat_id += category_id_offset
 
         # bbox
         bbox = p.get("bbox") or p.get("box") or p.get("bounding_box")
@@ -881,7 +913,13 @@ def main():
 
     try:
         pred_test_path = OUTPUT_DIR / "pred_test.json"
-        save_predictions_coco(pred_json_path, gt_coco_path, pred_test_path, score_threshold=0.2)
+        save_predictions_coco(
+            pred_json_path,
+            gt_coco_path,
+            pred_test_path,
+            score_threshold=0.2,
+            category_id_offset=1 if USE_SAHI else 0,
+        )
     except Exception as e:
         print(f"Warning: failed to write normalized pred_test.json: {e}")
 

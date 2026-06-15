@@ -253,7 +253,73 @@
 | 0.95 | 0.0061 | 0.0081 | 0.0015 | 0.0110 | 0.0009 | 0.0055 | 0.0058 |
 
 
-# SAHI on Inference only with  baseline_yolo11s_300epochs_basic_augmentation_1024_toudik
+# SAHI on Inference only with  baseline_yolo11s_300epochs_basic_augmentation_1024_toudik (768x1536)
+
+
+| Category               | Parameter   |         Value |
+|------------------------|-------------|--------------:|
+| Training               | epochs      |           300 |
+| Training               | batch_size  |            12 |
+| Training               | image_size  |          1024 |
+| Training               | model_name  |     `yolo11s` |
+| Training               | seed        |            42 |
+| Learning Rate          | lr0         |          0.01 |
+| Learning Rate          | lrf         |          0.01 |
+| Augmentation           | auto_augment | `randaugment` |
+| Color Augmentation     | hsv_h       |          0.01 |
+| Color Augmentation     | hsv_s       |           0.5 |
+| Color Augmentation     | hsv_v       |           0.3 |
+| Geometric Augmentation | translate   |           0.1 |
+| Geometric Augmentation | scale       |           0.4 |
+| Geometric Augmentation | fliplr      |           0.5 |
+| SAHI                   | Slice_Height|          1536 |
+| SAHI                   | SLICE_WIDTH |           768 |
+| SAHI                   | OVERLAP_HEIGHT_RATIO|           0.2 |
+| SAHI                   | OVERLAP_WIDTH_RATIO|           0.3 |
+
+## Evaluation Results
+
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.1528 |
+| AP50 | 0.3129 |
+| AP75 | 0.1283 |
+| APeasy | 0.2046 |
+| APmoderate | 0.1831 |
+| APhard | 0.1528 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.3290 |
+| ARmoderate | 0.2945 |
+| ARhard | 0.2533 |
+| AR1 | 0.0764 |
+| AR10 | 0.2107 |
+| AR100 | 0.2533 |
+| AR200 | 0.2533 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal | train | signal_pole | road_vehicle | person | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.4503 | 0.4106 | 0.2709 | 0.1887 | 0.2602 | 0.4826 | 0.1270 |
+| 0.55 | 0.4032 | 0.3851 | 0.2263 | 0.1498 | 0.2351 | 0.4547 | 0.1115 |
+| 0.60 | 0.3464 | 0.3606 | 0.1913 | 0.1005 | 0.2095 | 0.4180 | 0.1030 |
+| 0.65 | 0.2687 | 0.3266 | 0.1538 | 0.0607 | 0.1849 | 0.3680 | 0.1009 |
+| 0.70 | 0.1943 | 0.2907 | 0.1293 | 0.0314 | 0.1493 | 0.3116 | 0.0712 |
+| 0.75 | 0.1260 | 0.2466 | 0.1080 | 0.0180 | 0.1101 | 0.2357 | 0.0538 |
+| 0.80 | 0.0652 | 0.1976 | 0.0891 | 0.0092 | 0.0929 | 0.1620 | 0.0476 |
+| 0.85 | 0.0245 | 0.1294 | 0.0715 | 0.0060 | 0.0612 | 0.0943 | 0.0329 |
+| 0.90 | 0.0044 | 0.0534 | 0.0355 | 0.0025 | 0.0249 | 0.0398 | 0.0076 |
+| 0.95 | 0.0003 | 0.0037 | 0.0039 | 0.0001 | 0.0052 | 0.0061 | 0.0034 |
+
+
+
+# SAHI on Inference only with  baseline_yolo11s_300epochs_basic_augmentation_1024_toudik (1024x1024)
 
 
 | Category               | Parameter   |         Value |
@@ -277,3 +343,323 @@
 | SAHI                   | OVERLAP_HEIGHT_RATIO|           0.2 |
 | SAHI                   | OVERLAP_WIDTH_RATIO|           0.2 |
 
+## Evaluation Results
+
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.1870 |
+| AP50 | 0.3774 |
+| AP75 | 0.1661 |
+| APeasy | 0.2842 |
+| APmoderate | 0.2426 |
+| APhard | 0.1870 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.4078 |
+| ARmoderate | 0.3456 |
+| ARhard | 0.2720 |
+| AR1 | 0.0831 |
+| AR10 | 0.2339 |
+| AR100 | 0.2720 |
+| AR200 | 0.2720 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | train | signal | signal_pole | bicycle | road_vehicle | person |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.6380 | 0.2109 | 0.4744 | 0.2824 | 0.1524 | 0.3259 | 0.5577 |
+| 0.55 | 0.5905 | 0.1802 | 0.4568 | 0.2079 | 0.1237 | 0.2993 | 0.5167 |
+| 0.60 | 0.5258 | 0.1448 | 0.4181 | 0.1590 | 0.0996 | 0.2563 | 0.4790 |
+| 0.65 | 0.4563 | 0.1380 | 0.3808 | 0.1106 | 0.0950 | 0.2088 | 0.4170 |
+| 0.70 | 0.3731 | 0.1086 | 0.3417 | 0.0629 | 0.0767 | 0.1621 | 0.3441 |
+| 0.75 | 0.2781 | 0.0891 | 0.2977 | 0.0361 | 0.0579 | 0.1249 | 0.2793 |
+| 0.80 | 0.1709 | 0.0664 | 0.2439 | 0.0212 | 0.0372 | 0.0915 | 0.1894 |
+| 0.85 | 0.0811 | 0.0484 | 0.1697 | 0.0076 | 0.0111 | 0.0627 | 0.1021 |
+| 0.90 | 0.0246 | 0.0252 | 0.0798 | 0.0021 | 0.0062 | 0.0365 | 0.0381 |
+| 0.95 | 0.0018 | 0.0014 | 0.0082 | 0.0003 | 0.0058 | 0.0084 | 0.0106 |
+
+
+# SAHI on Inference only with  baseline_yolo11s_300epochs_basic_augmentation_1024_toudik (768x1536)
+
+
+| Category               | Parameter   |         Value |
+|------------------------|-------------|--------------:|
+| Training               | epochs      |           300 |
+| Training               | batch_size  |            12 |
+| Training               | image_size  |          1024 |
+| Training               | model_name  |     `yolo11s` |
+| Training               | seed        |            42 |
+| Learning Rate          | lr0         |          0.01 |
+| Learning Rate          | lrf         |          0.01 |
+| Augmentation           | auto_augment | `randaugment` |
+| Color Augmentation     | hsv_h       |          0.01 |
+| Color Augmentation     | hsv_s       |           0.5 |
+| Color Augmentation     | hsv_v       |           0.3 |
+| Geometric Augmentation | translate   |           0.1 |
+| Geometric Augmentation | scale       |           0.4 |
+| Geometric Augmentation | fliplr      |           0.5 |
+| SAHI                   | Slice_Height|          2048 |
+| SAHI                   | SLICE_WIDTH |           768 |
+| SAHI                   | OVERLAP_HEIGHT_RATIO|           0.2 |
+| SAHI                   | OVERLAP_WIDTH_RATIO|           0.3 |
+
+## Evaluation Results
+
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.1941 |
+| AP50 | 0.3775 |
+| AP75 | 0.1752 |
+| APeasy | 0.3198 |
+| APmoderate | 0.2633 |
+| APhard | 0.1941 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.4436 |
+| ARmoderate | 0.3656 |
+| ARhard | 0.2747 |
+| AR1 | 0.0867 |
+| AR10 | 0.2397 |
+| AR100 | 0.2747 |
+| AR200 | 0.2747 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal | train | signal_pole | person | road_vehicle | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.6439 | 0.4814 | 0.2270 | 0.2794 | 0.5498 | 0.3383 | 0.1225 |
+| 0.55 | 0.6156 | 0.4490 | 0.1856 | 0.2198 | 0.5120 | 0.3103 | 0.1176 |
+| 0.60 | 0.5733 | 0.4173 | 0.1501 | 0.1691 | 0.4702 | 0.2675 | 0.1029 |
+| 0.65 | 0.5228 | 0.3781 | 0.1320 | 0.1245 | 0.4204 | 0.2239 | 0.0970 |
+| 0.70 | 0.4495 | 0.3497 | 0.1104 | 0.0815 | 0.3421 | 0.1705 | 0.0497 |
+| 0.75 | 0.3631 | 0.3027 | 0.0905 | 0.0521 | 0.2498 | 0.1343 | 0.0337 |
+| 0.80 | 0.2496 | 0.2519 | 0.0658 | 0.0272 | 0.1810 | 0.1017 | 0.0278 |
+| 0.85 | 0.1281 | 0.1731 | 0.0368 | 0.0142 | 0.1097 | 0.0653 | 0.0145 |
+| 0.90 | 0.0359 | 0.0675 | 0.0138 | 0.0051 | 0.0423 | 0.0389 | 0.0066 |
+| 0.95 | 0.0032 | 0.0102 | 0.0011 | 0.0050 | 0.0128 | 0.0114 | 0.0062 |
+
+
+
+# Trained on image slices, inference non-sliced (baseline_yolo11s_60epochs_SAHI_Training_1024_eric)
+
+## Training Configuration
+
+| Category | Parameter |         Value |
+|---|---|--------------:|
+| Training | epochs |            60 |
+| Training | batch_size |            12 |
+| Training | image_size |          1024 |
+| Training | model_name |     `yolo11s` |
+| Training | seed |            42 |
+| Training | workers |             2 |
+| Learning Rate | lr0 |          0.01 |
+| Learning Rate | lrf |          0.01 |
+| Augmentation | auto_augment | `randaugment` |
+| Color Augmentation | hsv_h |          0.01 |
+| Color Augmentation | hsv_s |           0.5 |
+| Color Augmentation | hsv_v |           0.3 |
+| Geometric Augmentation | translate |           0.1 |
+| Geometric Augmentation | scale |           0.4 |
+| Geometric Augmentation | fliplr |           0.5 |
+| Blur Augmentation | blur |       `False` |
+| Blur Augmentation | blur_limit |        `3,10` |
+| Blur Augmentation | blur_p |          0.05 |
+| Motion Blur Augmentation | motion_blur |       `False` |
+| Motion Blur Augmentation | motion_blur_limit |        `3,10` |
+| Motion Blur Augmentation | motion_blur_p |          0.05 |
+| SAHI | use_sahi |        `True` |
+| SAHI | slice_height |          2048 |
+| SAHI | slice_width |           768 |
+| SAHI | overlap_height_ratio |           0.2 |
+| SAHI | overlap_width_ratio |           0.3 |
+
+## Evaluation Results: Direct Inference
+
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.1528 |
+| AP50 | 0.2836 |
+| AP75 | 0.1453 |
+| APeasy | 0.3189 |
+| APmoderate | 0.2263 |
+| APhard | 0.1528 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.3948 |
+| ARmoderate | 0.2834 |
+| ARhard | 0.1912 |
+| AR1 | 0.0752 |
+| AR10 | 0.1774 |
+| AR100 | 0.1912 |
+| AR200 | 0.1912 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal | road_vehicle | signal_pole | person | train | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.4763 | 0.3090 | 0.2861 | 0.1767 | 0.3757 | 0.3192 | 0.0424 |
+| 0.55 | 0.4557 | 0.2913 | 0.2617 | 0.1531 | 0.3537 | 0.2925 | 0.0339 |
+| 0.60 | 0.4273 | 0.2802 | 0.2306 | 0.1257 | 0.3262 | 0.2744 | 0.0280 |
+| 0.65 | 0.3926 | 0.2539 | 0.1952 | 0.1021 | 0.2856 | 0.2368 | 0.0195 |
+| 0.70 | 0.3479 | 0.2312 | 0.1627 | 0.0739 | 0.2211 | 0.2166 | 0.0149 |
+| 0.75 | 0.2861 | 0.1972 | 0.1247 | 0.0486 | 0.1692 | 0.1762 | 0.0149 |
+| 0.80 | 0.2081 | 0.1601 | 0.0945 | 0.0282 | 0.1119 | 0.1303 | 0.0149 |
+| 0.85 | 0.1184 | 0.1174 | 0.0598 | 0.0176 | 0.0595 | 0.0645 | 0.0012 |
+| 0.90 | 0.0434 | 0.0439 | 0.0300 | 0.0031 | 0.0236 | 0.0342 | 0.0012 |
+| 0.95 | 0.0078 | 0.0094 | 0.0109 | 0.0025 | 0.0035 | 0.0069 | 0.0012 |
+
+
+
+#  Trained on image slices, inference sliced (baseline_yolo11s_60epochs_SAHI_Training_1024_eric)
+
+## Training Configuration
+
+| Category | Parameter                               |         Value |
+|---|-----------------------------------------|--------------:|
+| Training | epochs                                  |            60 |
+| Training | batch_size                              |            12 |
+| Training | image_size                              |          1024 |
+| Training | model_name                              |     `yolo11s` |
+| Training | seed                                    |            42 |
+| Training | workers                                 |             2 |
+| Learning Rate | lr0                                     |          0.01 |
+| Learning Rate | lrf                                     |          0.01 |
+| Augmentation | auto_augment                            | `randaugment` |
+| Color Augmentation | hsv_h                                   |          0.01 |
+| Color Augmentation | hsv_s                                   |           0.5 |
+| Color Augmentation | hsv_v                                   |           0.3 |
+| Geometric Augmentation | translate                               |           0.1 |
+| Geometric Augmentation | scale                                   |           0.4 |
+| Geometric Augmentation | fliplr                                  |           0.5 |
+| Blur Augmentation | blur                                    |       `False` |
+| Blur Augmentation | blur_limit                              |        `3,10` |
+| Blur Augmentation | blur_p                                  |          0.05 |
+| Motion Blur Augmentation | motion_blur                             |       `False` |
+| Motion Blur Augmentation | motion_blur_limit                       |        `3,10` |
+| Motion Blur Augmentation | motion_blur_p                           |          0.05 |
+| SAHI | use_sahi                                |        `True` |
+| SAHI | slice_height (train,inference)          |          2048 |
+| SAHI | slice_width  (train,inference)          |           768 |
+| SAHI | overlap_height_ratio (train, inference) |           0.2 |
+| SAHI | overlap_width_ratio  (train, inference)          |           0.3 |
+
+## Evaluation Results
+
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.2128 |
+| AP50 | 0.3985 |
+| AP75 | 0.1997 |
+| APeasy | 0.3664 |
+| APmoderate | 0.2979 |
+| APhard | 0.2128 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.4898 |
+| ARmoderate | 0.3972 |
+| ARhard | 0.2903 |
+| AR1 | 0.0924 |
+| AR10 | 0.2553 |
+| AR100 | 0.2903 |
+| AR200 | 0.2903 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal | road_vehicle | signal_pole | train | person | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.6635 | 0.5039 | 0.3588 | 0.3192 | 0.2108 | 0.5563 | 0.1767 |
+| 0.55 | 0.6314 | 0.4763 | 0.3222 | 0.2676 | 0.1794 | 0.5285 | 0.1656 |
+| 0.60 | 0.5971 | 0.4519 | 0.2803 | 0.2214 | 0.1434 | 0.4927 | 0.1415 |
+| 0.65 | 0.5527 | 0.4230 | 0.2460 | 0.1759 | 0.1237 | 0.4384 | 0.1162 |
+| 0.70 | 0.4903 | 0.3873 | 0.1912 | 0.1162 | 0.0935 | 0.3722 | 0.0827 |
+| 0.75 | 0.4051 | 0.3415 | 0.1521 | 0.0812 | 0.0678 | 0.2767 | 0.0736 |
+| 0.80 | 0.2851 | 0.2861 | 0.1126 | 0.0518 | 0.0610 | 0.1797 | 0.0548 |
+| 0.85 | 0.1632 | 0.2016 | 0.0661 | 0.0236 | 0.0396 | 0.1040 | 0.0368 |
+| 0.90 | 0.0524 | 0.1039 | 0.0308 | 0.0042 | 0.0220 | 0.0461 | 0.0216 |
+| 0.95 | 0.0115 | 0.0195 | 0.0088 | 0.0017 | 0.0003 | 0.0068 | 0.0064 |
+
+
+
+#  Oversampling (baseline_yolo11s_300epochs_basic_augmentation_1024_toudik)
+
+## Training Configuration
+
+| Category               | Parameter |         Value |
+|------------------------|---|--------------:|
+| Training               | epochs |           300 |
+| Training               | batch_size |            12 |
+| Training               | image_size |          1024 |
+| Training               | model_name |     `yolo11s` |
+| Training               | seed |            42 |
+| Learning Rate          | lr0 |          0.01 |
+| Learning Rate          | lrf |          0.01 |
+| Augmentation           | auto_augment | `randaugment` |
+| Color Augmentation     | hsv_h |          0.01 |
+| Color Augmentation     | hsv_s |           0.5 |
+| Color Augmentation     | hsv_v |           0.3 |
+| Geometric Augmentation | translate |           0.1 |
+| Geometric Augmentation | scale |           0.4 |
+| Geometric Augmentation | fliplr |           0.5 |
+| Oversampling           | ROAD_VEHICLE_FACTOR |             2 |
+| Oversampling  | BICYCLE_FACTOR |           4 |
+
+
+## Evaluation Results: Direct Inference
+
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.1608 |
+| AP50 | 0.3051 |
+| AP75 | 0.1473 |
+| APeasy | 0.3164 |
+| APmoderate | 0.2319 |
+| APhard | 0.1608 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.3869 |
+| ARmoderate | 0.2857 |
+| ARhard | 0.1974 |
+| AR1 | 0.0774 |
+| AR10 | 0.1804 |
+| AR100 | 0.1974 |
+| AR200 | 0.1974 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal | signal_pole | road_vehicle | person | train | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.5123 | 0.3270 | 0.1943 | 0.2774 | 0.4356 | 0.3712 | 0.0180 |
+| 0.55 | 0.4904 | 0.3098 | 0.1582 | 0.2516 | 0.4035 | 0.3376 | 0.0161 |
+| 0.60 | 0.4571 | 0.2740 | 0.1277 | 0.2209 | 0.3741 | 0.3108 | 0.0161 |
+| 0.65 | 0.4134 | 0.2516 | 0.0973 | 0.1959 | 0.3236 | 0.2885 | 0.0092 |
+| 0.70 | 0.3478 | 0.2121 | 0.0687 | 0.1593 | 0.2632 | 0.2528 | 0.0027 |
+| 0.75 | 0.2787 | 0.1817 | 0.0427 | 0.1126 | 0.1910 | 0.2216 | 0.0027 |
+| 0.80 | 0.1926 | 0.1500 | 0.0254 | 0.0768 | 0.1095 | 0.1807 | 0.0027 |
+| 0.85 | 0.1113 | 0.1040 | 0.0131 | 0.0533 | 0.0586 | 0.1316 | 0.0027 |
+| 0.90 | 0.0431 | 0.0495 | 0.0099 | 0.0234 | 0.0208 | 0.0560 | 0.0005 |
+| 0.95 | 0.0112 | 0.0069 | 0.0000 | 0.0107 | 0.0077 | 0.0030 | 0.0005 |

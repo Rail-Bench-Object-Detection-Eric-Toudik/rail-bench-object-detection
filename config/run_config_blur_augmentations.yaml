@@ -4,6 +4,7 @@ batch_size: 12
 image_size: 1024
 model_name: "yolo11s" # Model architecture to use; options include "yolo11n", "yolo11s", "yolo11m"
 seed: 42
+workers: 2
 
 # Learning Rates
 lr0: 0.01 # initial learning rate
