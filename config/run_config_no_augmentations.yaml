@@ -1,0 +1,25 @@
+# Training
+epochs: 300 # 300
+batch_size: 12
+image_size: 1024
+model_name: "yolo11s" # Model architecture to use; options include "yolo11n", "yolo11s", "yolo11m"
+seed: 42
+workers: 2
+
+# Learning Rates
+lr0: 0.01 # initial learning rate
+lrf: 0.01 # Final learning rate
+
+
+# Disable all augmentations
+auto_augment: None
+
+# Dumym values
+hsv_h: 0
+hsv_s: 0
+hsv_v: 0
+
+# Geometric Augmentations
+translate: 0
+scale: 0
+fliplr: 0

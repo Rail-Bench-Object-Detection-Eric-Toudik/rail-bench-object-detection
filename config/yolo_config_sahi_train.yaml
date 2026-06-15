@@ -1,0 +1,5 @@
+train: C:/Users/Eric/PycharmProjects/rail-bench-object-detection/data/sahi/yolo/train
+val: C:/Users/Eric/PycharmProjects/rail-bench-object-detection/data/sahi/yolo/val
+
+nc: 7
+names: ['train', 'catenary_pole', 'signal_pole', 'signal', 'person', 'road_vehicle', 'bicycle']
