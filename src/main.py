@@ -14,19 +14,19 @@ def string_to_int_tuple(string) -> tuple[int, ...]:
 PIPELINE_TEST = False
 def main():
 
-    RUN_CONFIG_FILENAME = "run_config_basic_augmentations.yaml"
+    RUN_CONFIG_FILENAME = "run_config_basic_augmentations_yolom.yaml"
     RUN_NAME_DETAILS = RUN_CONFIG_FILENAME.removeprefix("run_config_").removesuffix(".yaml") # Details to show in the name of the run, eg. "no augmentation"
 
     PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
-    MODEL_PATH = os.path.join(PROJECT_ROOT, 'models', 'yolo11s.pt')
-    RUN_NAME_DETAILS = "oversampled_train"  # Details to show in the name of the run, eg. "no augmentation"
+    MODEL_PATH = os.path.join(PROJECT_ROOT, 'models', 'yolo11m.pt')
+    RUN_NAME_DETAILS = "yolo11m_basic_augment"  # Details to show in the name of the run, eg. "no augmentation"
 
     if PIPELINE_TEST:
         RUN_NAME_DETAILS = f"PIPELINE_TEST_{RUN_NAME_DETAILS}"  # Make sure to prefix the pipeline Test!
         DATA_CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'yolo_config_pipeline_test.yaml')
 
     else:
-        DATA_CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'yolo_config_oversampled.yaml')
+        DATA_CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config', 'yolo_config.yaml')
 
     RUN_CONFIG_PATH = os.path.join(PROJECT_ROOT, "config", RUN_CONFIG_FILENAME)
     run_config = read_config(RUN_CONFIG_PATH)
