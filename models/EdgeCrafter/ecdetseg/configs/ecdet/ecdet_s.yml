@@ -12,6 +12,7 @@ ViTAdapter:
   num_heads: 3
   interaction_indexes: [10, 11] 
   weights_path: ecvits/ecvitt.pth
+  skip_load_backbone: False
 
 
 HybridEncoder:
