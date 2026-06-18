@@ -5,9 +5,11 @@ from pathlib import Path
 
 ROAD_VEHICLE_CLASS_ID = 5
 BICYCLE_CLASS_ID = 6
+SIGNAL_POLE_CLASS_ID = 2
 
 ROAD_VEHICLE_FACTOR = 2
 BICYCLE_FACTOR = 4
+SIGNAL_POLE_FACTOR = 2
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 
@@ -35,6 +37,8 @@ def repeat_factor_for(label_file: Path) -> int:
                 factor = max(factor, ROAD_VEHICLE_FACTOR)
             elif class_id == BICYCLE_CLASS_ID:
                 factor = max(factor, BICYCLE_FACTOR)
+            elif class_id == SIGNAL_POLE_CLASS_ID:
+                factor = max(factor, SIGNAL_POLE_FACTOR)
 
     return factor
 
