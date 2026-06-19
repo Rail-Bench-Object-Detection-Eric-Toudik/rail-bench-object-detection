@@ -686,8 +686,6 @@
 | Geometric Augmentation | translate |           0.1 |
 | Geometric Augmentation | scale |           0.4 |
 | Geometric Augmentation | fliplr |           0.5 |
-| Oversampling           | ROAD_VEHICLE_FACTOR |             2 |
-| Oversampling  | BICYCLE_FACTOR |           4 |
 
 
 ## Evaluation Results: Direct Inference
@@ -729,3 +727,178 @@
 | 0.85 | 0.1436 | 0.0211 | 0.1433 | 0.1513 | 0.0733 | 0.0824 | 0.0060 |
 | 0.90 | 0.0584 | 0.0119 | 0.0604 | 0.0959 | 0.0383 | 0.0355 | 0.0041 |
 | 0.95 | 0.0075 | 0.0017 | 0.0151 | 0.0233 | 0.0124 | 0.0118 | 0.0041 |
+
+
+
+#  Yolov11M with SAHI - inference only -  (baseline_yolo11s_300epochs_basic_augmentation_1024_toudik)
+
+## Training Configuration
+
+| Category               | Parameter |         Value |
+|------------------------|---|--------------:|
+| Training               | epochs |           300 |
+| Training               | batch_size |            12 |
+| Training               | image_size |          1024 |
+| Training               | model_name |     `yolo11s` |
+| Training               | seed |            42 |
+| Learning Rate          | lr0 |          0.01 |
+| Learning Rate          | lrf |          0.01 |
+| Augmentation           | auto_augment | `randaugment` |
+| Color Augmentation     | hsv_h |          0.01 |
+| Color Augmentation     | hsv_s |           0.5 |
+| Color Augmentation     | hsv_v |           0.3 |
+| Geometric Augmentation | translate |           0.1 |
+| Geometric Augmentation | scale |           0.4 |
+| Geometric Augmentation | fliplr |           0.5 |
+| SAHI | use_sahi |        `True` |
+| SAHI | slice_height |          2048 |
+| SAHI | slice_width |           768 |
+| SAHI | overlap_height_ratio |           0.2 |
+| SAHI | overlap_width_ratio |           0.3 |
+
+
+## Evaluation Results: 
+
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.2200 |
+| AP50 | 0.4106 |
+| AP75 | 0.2110 |
+| APeasy | 0.3463 |
+| APmoderate | 0.2934 |
+| APhard | 0.2200 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.4692 |
+| ARmoderate | 0.3969 |
+| ARhard | 0.3030 |
+| AR1 | 0.0959 |
+| AR10 | 0.2634 |
+| AR100 | 0.3030 |
+| AR200 | 0.3030 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal | road_vehicle | signal_pole | train | person | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.6815 | 0.5299 | 0.3649 | 0.3396 | 0.2398 | 0.5723 | 0.1463 |
+| 0.55 | 0.6487 | 0.4986 | 0.3381 | 0.2922 | 0.2008 | 0.5493 | 0.1125 |
+| 0.60 | 0.6146 | 0.4729 | 0.2919 | 0.2260 | 0.1696 | 0.5123 | 0.0943 |
+| 0.65 | 0.5654 | 0.4379 | 0.2548 | 0.1804 | 0.1491 | 0.4700 | 0.0801 |
+| 0.70 | 0.4884 | 0.3904 | 0.2075 | 0.1365 | 0.1261 | 0.3924 | 0.0763 |
+| 0.75 | 0.3992 | 0.3396 | 0.1773 | 0.0941 | 0.1017 | 0.3013 | 0.0637 |
+| 0.80 | 0.2767 | 0.2730 | 0.1362 | 0.0519 | 0.0811 | 0.2179 | 0.0513 |
+| 0.85 | 0.1403 | 0.1860 | 0.0813 | 0.0233 | 0.0586 | 0.1271 | 0.0229 |
+| 0.90 | 0.0416 | 0.0923 | 0.0388 | 0.0079 | 0.0391 | 0.0524 | 0.0162 |
+| 0.95 | 0.0024 | 0.0071 | 0.0098 | 0.0002 | 0.0127 | 0.0133 | 0.0096 |
+
+
+#  Yolov11M trained on slcies (baseline_yolo11s_300epochs_basic_augmentation_1024_toudik)
+
+## Training Configuration
+
+| Category               | Parameter |         Value |
+|------------------------|---|--------------:|
+| Training               | epochs |           300 |
+| Training               | batch_size |            12 |
+| Training               | image_size |          1024 |
+| Training               | model_name |     `yolo11s` |
+| Training               | seed |            42 |
+| Learning Rate          | lr0 |          0.01 |
+| Learning Rate          | lrf |          0.01 |
+| Augmentation           | auto_augment | `randaugment` |
+| Color Augmentation     | hsv_h |          0.01 |
+| Color Augmentation     | hsv_s |           0.5 |
+| Color Augmentation     | hsv_v |           0.3 |
+| Geometric Augmentation | translate |           0.1 |
+| Geometric Augmentation | scale |           0.4 |
+| Geometric Augmentation | fliplr |           0.5 |
+| SAHI                   | Slice_Height|          1536 |
+| SAHI                   | SLICE_WIDTH |           768 |
+| SAHI                   | OVERLAP_HEIGHT_RATIO|           0.2 |
+| SAHI                   | OVERLAP_WIDTH_RATIO|           0.3 |
+
+## Evaluation Results: Direct Inference
+
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.1794 |
+| AP50 | 0.3312 |
+| AP75 | 0.1701 |
+| APeasy | 0.3605 |
+| APmoderate | 0.2629 |
+| APhard | 0.1794 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.4381 |
+| ARmoderate | 0.3215 |
+| ARhard | 0.2205 |
+| AR1 | 0.0885 |
+| AR10 | 0.2028 |
+| AR100 | 0.2205 |
+| AR200 | 0.2205 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal_pole | signal | train | road_vehicle | person | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.5034 | 0.2158 | 0.3561 | 0.3717 | 0.3301 | 0.4123 | 0.1289 |
+| 0.55 | 0.4819 | 0.1881 | 0.3437 | 0.3301 | 0.2991 | 0.3886 | 0.1195 |
+| 0.60 | 0.4583 | 0.1544 | 0.3186 | 0.3078 | 0.2673 | 0.3547 | 0.1026 |
+| 0.65 | 0.4265 | 0.1127 | 0.2992 | 0.2719 | 0.2302 | 0.3163 | 0.0931 |
+| 0.70 | 0.3795 | 0.0802 | 0.2644 | 0.2436 | 0.1860 | 0.2631 | 0.0785 |
+| 0.75 | 0.3115 | 0.0558 | 0.2350 | 0.2031 | 0.1483 | 0.1944 | 0.0427 |
+| 0.80 | 0.2319 | 0.0342 | 0.1854 | 0.1428 | 0.1113 | 0.1353 | 0.0293 |
+| 0.85 | 0.1392 | 0.0204 | 0.1355 | 0.0702 | 0.0760 | 0.0807 | 0.0213 |
+| 0.90 | 0.0602 | 0.0112 | 0.0612 | 0.0366 | 0.0322 | 0.0303 | 0.0018 |
+| 0.95 | 0.0135 | 0.0005 | 0.0122 | 0.0033 | 0.0061 | 0.0048 | 0.0018 |
+
+## Evaluation Results: SAHI + Slice-Trained YOLOv11s
+
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.2337 |
+| AP50 | 0.4270 |
+| AP75 | 0.2301 |
+| APeasy | 0.3859 |
+| APmoderate | 0.3190 |
+| APhard | 0.2337 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.5164 |
+| ARmoderate | 0.4254 |
+| ARhard | 0.3204 |
+| AR1 | 0.1025 |
+| AR10 | 0.2781 |
+| AR100 | 0.3204 |
+| AR200 | 0.3204 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal | train | signal_pole | person | road_vehicle | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.6966 | 0.5643 | 0.2050 | 0.3743 | 0.5832 | 0.4017 | 0.1640 |
+| 0.55 | 0.6635 | 0.5308 | 0.1739 | 0.3176 | 0.5576 | 0.3536 | 0.1521 |
+| 0.60 | 0.6377 | 0.5024 | 0.1425 | 0.2628 | 0.5163 | 0.3159 | 0.1436 |
+| 0.65 | 0.5972 | 0.4743 | 0.1261 | 0.2106 | 0.4651 | 0.2616 | 0.1357 |
+| 0.70 | 0.5274 | 0.4305 | 0.0956 | 0.1572 | 0.3930 | 0.2226 | 0.1211 |
+| 0.75 | 0.4478 | 0.3828 | 0.0801 | 0.1158 | 0.3202 | 0.1769 | 0.0871 |
+| 0.80 | 0.3310 | 0.3222 | 0.0625 | 0.0621 | 0.2253 | 0.1321 | 0.0331 |
+| 0.85 | 0.1818 | 0.2353 | 0.0428 | 0.0340 | 0.1245 | 0.0843 | 0.0247 |
+| 0.90 | 0.0573 | 0.1190 | 0.0248 | 0.0097 | 0.0500 | 0.0391 | 0.0133 |
+| 0.95 | 0.0053 | 0.0203 | 0.0023 | 0.0017 | 0.0108 | 0.0090 | 0.0100 |
