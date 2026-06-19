@@ -12,17 +12,28 @@ import sys
 from typing import Iterable
 
 import torch
-from torch.cuda.amp.grad_scaler import GradScaler
-from torch.utils.tensorboard import SummaryWriter
 
 from ..data import CocoEvaluator
 from ..misc import MetricLogger, SmoothedValue, dist_utils
-from ..optim import ModelEMA
+
+
+def _scalarize(value):
+    if isinstance(value, torch.Tensor):
+        value = value.detach().cpu()
+        return value.item() if value.numel() == 1 else value.tolist()
+
+    if hasattr(value, 'item') and not isinstance(value, (str, bytes)):
+        try:
+            return value.item()
+        except Exception:
+            return value
+
+    return value
 
 
 def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, max_norm: float = 0, **kwargs):
+                    device: torch.device, epoch: int, max_norm: float = 0.0, **kwargs):
     model.train()
     criterion.train()
     metric_logger = MetricLogger(delimiter="  ")
@@ -30,10 +41,11 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
     header = 'Epoch: [{}]'.format(epoch)
 
     print_freq = kwargs.get('print_freq', 10)
-    writer :SummaryWriter = kwargs.get('writer', None)
+    writer = kwargs.get('writer', None)
+    wandb_run = kwargs.get('wandb_run', None)
 
-    ema :ModelEMA = kwargs.get('ema', None)
-    scaler :GradScaler = kwargs.get('scaler', None)
+    ema = kwargs.get('ema', None)
+    scaler = kwargs.get('scaler', None)
     lr_warmup_scheduler = kwargs.get('lr_warmup_scheduler', None)
 
     cur_iters = epoch * len(data_loader)
@@ -115,6 +127,16 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
             for k, v in loss_dict_reduced.items():
                 writer.add_scalar(f'Loss/{k}', v.item(), global_step)
 
+        if wandb_run is not None and dist_utils.is_main_process() and global_step % 10 == 0:
+            wandb_metrics = {
+                'train/loss_total': _scalarize(loss_value),
+            }
+            for j, pg in enumerate(optimizer.param_groups):
+                wandb_metrics[f'train/lr_pg_{j}'] = pg['lr']
+            for k, v in loss_dict_reduced.items():
+                wandb_metrics[f'train/loss_{k}'] = _scalarize(v)
+            wandb_run.log(wandb_metrics, step=global_step)
+
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -122,7 +144,7 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
 
 
 @torch.no_grad()
-def evaluate(model: torch.nn.Module, criterion: torch.nn.Module, postprocessor, data_loader, coco_evaluator: CocoEvaluator, device):
+def evaluate(model: torch.nn.Module, criterion: torch.nn.Module, postprocessor, data_loader, coco_evaluator: CocoEvaluator, device, **kwargs):
     model.eval()
     criterion.eval()
     coco_evaluator.cleanup()
@@ -133,6 +155,8 @@ def evaluate(model: torch.nn.Module, criterion: torch.nn.Module, postprocessor, 
 
     # iou_types = tuple(k for k in ('segm', 'bbox') if k in postprocessor.keys())
     iou_types = coco_evaluator.iou_types
+    wandb_run = kwargs.get('wandb_run', None)
+    step = kwargs.get('epoch', kwargs.get('step', None))
     # coco_evaluator = CocoEvaluator(base_ds, iou_types)
     # coco_evaluator.coco_eval[iou_types[0]].params.iouThrs = [0, 0.1, 0.5, 0.75]
 
@@ -199,12 +223,22 @@ def evaluate(model: torch.nn.Module, criterion: torch.nn.Module, postprocessor, 
 
         print(f"\n### Class-wise Evaluation Metrics ###")
         print(tabulate(table_data, headers=headers, tablefmt='pretty'))
-        
-    
+
     if coco_evaluator is not None:
         if 'segm' in iou_types:
             stats['coco_eval_mask'] = coco_evaluator.coco_eval['segm'].stats.tolist()
         elif 'bbox' in iou_types:
             stats['coco_eval_bbox'] = coco_evaluator.coco_eval['bbox'].stats.tolist()
+
+    if wandb_run is not None and dist_utils.is_main_process():
+        wandb_metrics = {}
+        for metric_name, metric_values in stats.items():
+            if isinstance(metric_values, (list, tuple)):
+                for idx, metric_value in enumerate(metric_values):
+                    wandb_metrics[f'val/{metric_name}_{idx}'] = _scalarize(metric_value)
+            else:
+                wandb_metrics[f'val/{metric_name}'] = _scalarize(metric_values)
+        if wandb_metrics:
+            wandb_run.log(wandb_metrics, step=step)
 
     return stats, coco_evaluator
