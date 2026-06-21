@@ -1,6 +1,5 @@
 .idea
 data
-/models/
 .env
 /src/runs/
 external/RAIL-BENCH_toolkit

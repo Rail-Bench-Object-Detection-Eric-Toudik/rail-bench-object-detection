@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "railbench-benchmarksuite"
+version = "0.1.0"
+description = "RailBench Benchmark Suite"
+license = {text = "MIT"}
+requires-python = ">=3.12"
+dependencies = [
+    "shapely",
+    "numpy",
+    "opencv-python",
+    "scikit-learn",
+    "scipy",
+    "networkx",
+    "matplotlib",
+    "tqdm",
+]
+
+[project.scripts]
+rb-viz-rails = "annotation_visualizer.visualize_rails:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+# Discover all packages (Benchmarks, utils, etc.) from the repo root.
+include = ["Benchmarks*", "utils*", "annotation_visualizer*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+# Include benchmark formatting guides and reference JSONs in distributions.
+"Benchmarks" = ["**/format/*.md", "**/format/*.json"]
