@@ -134,7 +134,9 @@ def train_one_epoch(self_lr_scheduler, lr_scheduler, model: torch.nn.Module, cri
             for j, pg in enumerate(optimizer.param_groups):
                 wandb_metrics[f'train/lr_pg_{j}'] = pg['lr']
             for k, v in loss_dict_reduced.items():
-                wandb_metrics[f'train/loss_{k}'] = _scalarize(v)
+                # use the original loss key name without adding an extra 'loss_' prefix
+                # so e.g. 'loss_bbox' -> 'train/loss_bbox' (instead of 'train/loss_loss_bbox')
+                wandb_metrics[f'train/{k}'] = _scalarize(v)
             wandb_run.log(wandb_metrics, step=global_step)
 
     # gather the stats from all processes

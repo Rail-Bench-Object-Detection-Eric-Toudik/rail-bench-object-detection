@@ -116,6 +116,12 @@ class ECSolver(BaseSolver):
         try:
             if self.last_epoch > 0:
                 module = self.ema.module if self.ema else self.model
+                # compute a monotonic wandb step based on completed training iterations
+                if hasattr(self, 'train_dataloader') and self.train_dataloader is not None:
+                    train_steps = len(self.train_dataloader)
+                    wandb_step = (self.last_epoch + 1) * train_steps
+                else:
+                    wandb_step = self.last_epoch
                 test_stats, coco_evaluator = evaluate(
                     module,
                     self.criterion,
@@ -124,7 +130,7 @@ class ECSolver(BaseSolver):
                     self.evaluator,
                     self.device,
                     wandb_run=wandb_run,
-                    epoch=self.last_epoch,
+                    step=wandb_step,
                 )
                 for k in test_stats:
                     best_stat['epoch'] = self.last_epoch
@@ -187,6 +193,12 @@ class ECSolver(BaseSolver):
                         dist_utils.save_on_master(self.state_dict(), checkpoint_path)
 
                 module = self.ema.module if self.ema else self.model
+                # compute a monotonic wandb step for evaluation logging (after the epoch's training steps)
+                if hasattr(self, 'train_dataloader') and self.train_dataloader is not None:
+                    train_steps = len(self.train_dataloader)
+                    wandb_step = (epoch + 1) * train_steps
+                else:
+                    wandb_step = epoch
                 test_stats, coco_evaluator = evaluate(
                     module,
                     self.criterion,
@@ -195,7 +207,7 @@ class ECSolver(BaseSolver):
                     self.evaluator,
                     self.device,
                     wandb_run=wandb_run,
-                    epoch=epoch,
+                    step=wandb_step,
                 )
 
                 for k in test_stats:
@@ -275,6 +287,12 @@ class ECSolver(BaseSolver):
 
         try:
             module = self.ema.module if self.ema else self.model
+            # compute a monotonic wandb step for evaluation logging
+            if hasattr(self, 'train_dataloader') and self.train_dataloader is not None:
+                train_steps = len(self.train_dataloader)
+                wandb_step = (self.last_epoch + 1) * train_steps
+            else:
+                wandb_step = self.last_epoch
             test_stats, coco_evaluator = evaluate(
                 module,
                 self.criterion,
@@ -283,7 +301,7 @@ class ECSolver(BaseSolver):
                 self.evaluator,
                 self.device,
                 wandb_run=wandb_run,
-                epoch=self.last_epoch,
+                step=wandb_step,
             )
 
             if self.output_dir:
