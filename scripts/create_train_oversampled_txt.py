@@ -1,7 +1,7 @@
 import copy
 import json
 from pathlib import Path
-
+import os
 
 ROAD_VEHICLE_CLASS_ID = 5
 BICYCLE_CLASS_ID = 6
@@ -14,12 +14,12 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 
 ROOT = Path(__file__).resolve().parents[1]
-IMAGE_DIR = ROOT / "data" / "images" / "train"
-LABEL_DIR = ROOT / "data" / "labels" / "train"
-OUTPUT_FILE = ROOT / "data" / "train_oversampled.txt"
-COCO_INPUT_FILE = ROOT / "data" / "coco_annotations" / "objects" / "annotations_train.json"
+IMAGE_DIR = ROOT / "data" / "sahi" / "yolo" / "train"
+LABEL_DIR = ROOT / "data" / "sahi" / "yolo" / "train"
+YOLO_OUTPUT_FILE = ROOT / "data" / "sahi" / "yolo" / "train" / "train_oversampled.txt"
+COCO_INPUT_FILE = ROOT / "data" / "sahi" / "sliced_coco" / "train" / "train_sliced_coco.json"
 COCO_OUTPUT_FILE = (
-    ROOT / "data" / "coco_annotations" / "objects" / "annotations_train_oversampled.json"
+    ROOT / "data" / "sahi_oversampled" / "train" / "annotations_train_sahi_oversampled.json"
 )
 
 
@@ -102,7 +102,7 @@ def main() -> None:
         lines.extend([str(image_file.resolve())] * repeat_factor)
         image_repeat_factors[image_file.name] = repeat_factor
 
-    OUTPUT_FILE.write_text("\n".join(lines) + "\n")
+    YOLO_OUTPUT_FILE.write_text("\n".join(lines) + "\n")
     oversampled_coco_data = build_oversampled_coco(image_repeat_factors)
     COCO_OUTPUT_FILE.write_text(json.dumps(oversampled_coco_data, indent=4) + "\n")
 
