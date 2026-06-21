@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 
 
+# IDS in YOLO Format
+# 0...6
 ROAD_VEHICLE_CLASS_ID = 5
 BICYCLE_CLASS_ID = 6
 SIGNAL_POLE_CLASS_ID = 2
@@ -93,6 +95,7 @@ def main() -> None:
     lines = []
     image_repeat_factors = {}
 
+    # Convert YOLO format
     for image_file in sorted(IMAGE_DIR.iterdir()):
         if image_file.suffix.lower() not in IMAGE_EXTENSIONS:
             continue
@@ -101,6 +104,8 @@ def main() -> None:
         repeat_factor = repeat_factor_for(label_file)
         lines.extend([str(image_file.resolve())] * repeat_factor)
         image_repeat_factors[image_file.name] = repeat_factor
+
+    # Output COCO
 
     OUTPUT_FILE.write_text("\n".join(lines) + "\n")
     oversampled_coco_data = build_oversampled_coco(image_repeat_factors)
