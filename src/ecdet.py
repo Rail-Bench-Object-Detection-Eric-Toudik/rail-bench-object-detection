@@ -45,7 +45,7 @@ class ECDet(nn.Module):
         return x
 
 
-def get_model(weights: str, model_size: ECDetModel = ECDetModel.MEDIUM, device: str = "cpu", strict: bool = True):
+def get_model(weights: str, model_size: ECDetModel = ECDetModel.MEDIUM, map_location: str = "cpu", strict: bool = True):
     """
     Build an ECDet PyTorch model and load local ``.pth`` weights.
 
@@ -56,7 +56,8 @@ def get_model(weights: str, model_size: ECDetModel = ECDetModel.MEDIUM, device: 
     model_size : ECDetModel, default=ECDetModel.MEDIUM
         Model variant selector. Accepts ``ECDetModel`` enum entry
         (e.g. ``ECDetModel.MEDIUM.value``).
-    device : str, default="cpu"
+    map_location : str, default="cpu"
+        Device can be ``"cpu"`` or a specific CUDA device (e.g. ``"cuda:0"``).
         Device mapping used while loading the checkpoint.
     strict : bool, default=True
         Strictness forwarded to ``load_state_dict``.
@@ -80,8 +81,8 @@ def get_model(weights: str, model_size: ECDetModel = ECDetModel.MEDIUM, device: 
         ECDetModel.XLARGE.value: "ecdet_xlarge_config.yaml",
     }
 
-    selected_model_value = model_size.value if isinstance(model_size, ECDetModel) else model_size
-    config_filename = config_map.get(selected_model_value)
+    selected_model_size = model_size.value if isinstance(model_size, ECDetModel) else model_size
+    config_filename = config_map.get(selected_model_size)
     if not config_filename:
         raise ValueError(f"Invalid model value: {model_size}")
 
@@ -94,7 +95,7 @@ def get_model(weights: str, model_size: ECDetModel = ECDetModel.MEDIUM, device: 
     if not os.path.exists(weights):
         raise FileNotFoundError(f"Weights file not found: {weights}")
 
-    checkpoint = torch.load(weights, map_location=device)
+    checkpoint = torch.load(weights, map_location=map_location)
 
     if isinstance(checkpoint, dict) and 'model' in checkpoint and isinstance(checkpoint['model'], dict):
         state_dict = checkpoint['model']
