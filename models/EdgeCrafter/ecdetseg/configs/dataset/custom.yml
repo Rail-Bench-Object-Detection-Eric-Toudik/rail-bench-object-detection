@@ -13,7 +13,7 @@ train_dataloader:
   dataset:
     type: CocoDetection
     img_folder: ../../../data/sahi/sliced_coco/train/
-    ann_file: ../../../data/sahi/sliced_coco/train/train_sliced_coco.json
+    ann_file: ../../../data/sahi_oversampled/train/annotations_train_sahi_oversampled.json
     return_masks: False
     transforms:
       type: Compose
