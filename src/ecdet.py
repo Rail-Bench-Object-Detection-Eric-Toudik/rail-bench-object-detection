@@ -1,25 +1,28 @@
 import os
 import torch
 import torch.nn as nn
-from huggingface_hub import PyTorchModelHubMixin
 
 from models.EdgeCrafter.ecdetseg.engine.edgecrafter.ecvit import ViTAdapter
 from models.EdgeCrafter.ecdetseg.engine.edgecrafter.hybrid_encoder import HybridEncoder
 from models.EdgeCrafter.ecdetseg.engine.edgecrafter.decoder import ECTransformer
 from models.EdgeCrafter.ecdetseg.engine.edgecrafter.postprocessor import PostProcessor
-from read_config import read_config
+
+try:
+    from src.read_config import read_config
+except ModuleNotFoundError:
+    from read_config import read_config
 
 from enum import Enum
 
 
 class ECDetModel(str, Enum):
-    SMALL = "Intellindust/ECDet_S"
-    MEDIUM = "Intellindust/ECDet_M"
-    LARGE = "Intellindust/ECDet_L"
-    XLARGE = "Intellindust/ECDet_X"
+    SMALL = "small"
+    MEDIUM = "medium"
+    LARGE = "large"
+    XLARGE = "xlarge"
 
 
-class ECDet(nn.Module, PyTorchModelHubMixin):
+class ECDet(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -46,19 +49,35 @@ class ECDet(nn.Module, PyTorchModelHubMixin):
         return x
 
 
-def get_model(model: ECDetModel = ECDetModel.MEDIUM):
+def _get_checkpoint_state_dict(checkpoint):
+    if isinstance(checkpoint, dict):
+        if "ema" in checkpoint and isinstance(checkpoint["ema"], dict):
+            return checkpoint["ema"]["module"]
+        if "model" in checkpoint:
+            return checkpoint["model"]
+        if "state_dict" in checkpoint:
+            return checkpoint["state_dict"]
+    return checkpoint
+
+
+def get_model(
+    model: ECDetModel = ECDetModel.MEDIUM,
+    checkpoint_path: str | os.PathLike | None = None,
+):
     """
-    Build ECDet model and load pretrained weights.
+    Build ECDet model and optionally load local checkpoint weights.
 
     Parameters
     ----------
     model : ECDetModel
-        Enum selecting which pretrained ECDet variant to load.
+        Enum selecting which ECDet variant to build.
+    checkpoint_path : str | os.PathLike | None
+        Optional path to a local checkpoint downloaded from W&B.
 
     Returns
     -------
     ECDet
-        The initialized and pretrained ECDet model.
+        The initialized ECDet model.
     """
     config_map = {
         ECDetModel.SMALL: "ecdet_small_config.yaml",
@@ -76,10 +95,19 @@ def get_model(model: ECDetModel = ECDetModel.MEDIUM):
 
     config = read_config(config_path)
 
-    # First, instantiate the model with the configuration
-    #initialized_model = ECDet(config)
+    if "use_encoder_idx" in config["encoder"]:
+        config["encoder"]["use_encoder_idx"] = [
+            idx for idx in config["encoder"]["use_encoder_idx"] if idx is not None
+        ]
 
-    # Then, load the pretrained weights onto the instantiated model
-    #pretrained_model = initialized_model.from_pretrained(model.value)
-    ecdet = ECDet(config).from_pretrained(model.value)
+    if checkpoint_path is not None:
+        config["backbone"]["skip_load_backbone"] = True
+
+    ecdet = ECDet(config)
+
+    if checkpoint_path is not None:
+        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+        state_dict = _get_checkpoint_state_dict(checkpoint)
+        ecdet.load_state_dict(state_dict)
+
     return ecdet
