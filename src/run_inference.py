@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from pathlib import Path
 
 import wandb
@@ -10,17 +11,19 @@ from PIL import Image
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 import torchvision.transforms as T
-from ultralytics import YOLO
-from sahi.predict import predict
 
 from src.calculate_railbench_benchmark import BenchmarkCalculator
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 # ---------------------------------------------------------------------
 # Paths / Config
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
 USE_SAHI = False  # Set  False for direct/"normal" inference instead of sahi
-MODEL_BACKEND = "yolo"  # "yolo" or "ecdet"
+MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
 ECDET_MODEL_NAME = "small"  # "small", "medium", "large", or "xlarge"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -40,7 +43,10 @@ else:
 
 WANDB_ARTIFACT = ECDET_WANDB_ARTIFACT if MODEL_BACKEND == "ecdet" else YOLO_WANDB_ARTIFACT
 
-WANDB_PROJECT = "Rail-Bench-Object-Detection-Eric-Toudik"
+if MODEL_BACKEND == "yolo":
+    WANDB_PROJECT = "Rail-Bench-Object-Detection-Eric-Toudik"
+else:
+    WANDB_PROJECT = "Rail-Bench-Object-Detection-EdgeCrafter"
 
 # ---------------------------------------------------------------------
 # SAHI / Evaluation Parameters
@@ -360,6 +366,8 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
     Returns:
         Pfad zur JSON-Datei mit den Vorhersagen in COCO-Format
     """
+    from ultralytics import YOLO
+
     print(f"\nRunning direct YOLO inference without SAHI...")
     print(f"Model: {model_path}")
     print(f"Source directory: {source_dir}")
@@ -440,13 +448,13 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
     """
     Runs direct ECDet inference without SAHI and converts results to COCO format.
     """
-    from src.ecdet import ECDetModel, get_model
+    from src import ecdet as ecdet_module
 
     ecdet_model = {
-        "small": ECDetModel.SMALL,
-        "medium": ECDetModel.MEDIUM,
-        "large": ECDetModel.LARGE,
-        "xlarge": ECDetModel.XLARGE,
+        "small": ecdet_module.ECDetModel.SMALL,
+        "medium": ecdet_module.ECDetModel.MEDIUM,
+        "large": ecdet_module.ECDetModel.LARGE,
+        "xlarge": ecdet_module.ECDetModel.XLARGE,
     }[ECDET_MODEL_NAME]
 
     print(f"\nRunning direct ECDet inference without SAHI...")
@@ -455,7 +463,25 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
     print(f"Source directory: {source_dir}")
 
     device = torch.device(DEVICE if torch.cuda.is_available() or not DEVICE.startswith("cuda") else "cpu")
-    model = get_model(ecdet_model, checkpoint_path=model_path).to(device)
+    original_read_config = ecdet_module.read_config
+
+    def read_ecdet_config(config_path):
+        config = original_read_config(config_path)
+        use_encoder_idx = config["encoder"]["use_encoder_idx"]
+        config["encoder"]["use_encoder_idx"] = [
+            encoder_idx for encoder_idx in use_encoder_idx if encoder_idx is not None
+        ]
+        return config
+
+    ecdet_module.read_config = read_ecdet_config
+    try:
+        model = ecdet_module.get_model(
+            str(model_path),
+            model_size=ecdet_model,
+            map_location=str(device),
+        ).to(device)
+    finally:
+        ecdet_module.read_config = original_read_config
     model.eval()
 
     # RailBench uses its own 7 classes; do not apply COCO category remapping.
@@ -540,6 +566,8 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
 # ---------------------------------------------------------------------
 
 def run_sahi_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> Path:
+    from sahi.predict import predict
+
     result = predict(
         model_type="ultralytics",
         model_path=str(model_path),

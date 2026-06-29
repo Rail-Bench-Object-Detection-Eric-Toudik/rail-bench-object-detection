@@ -6,20 +6,16 @@ from models.EdgeCrafter.ecdetseg.engine.edgecrafter.ecvit import ViTAdapter
 from models.EdgeCrafter.ecdetseg.engine.edgecrafter.hybrid_encoder import HybridEncoder
 from models.EdgeCrafter.ecdetseg.engine.edgecrafter.decoder import ECTransformer
 from models.EdgeCrafter.ecdetseg.engine.edgecrafter.postprocessor import PostProcessor
-
-try:
-    from src.read_config import read_config
-except ModuleNotFoundError:
-    from read_config import read_config
+from read_config import read_config
 
 from enum import Enum
 
 
 class ECDetModel(str, Enum):
-    SMALL = "small"
-    MEDIUM = "medium"
-    LARGE = "large"
-    XLARGE = "xlarge"
+    SMALL = "Intellindust/ECDet_S"
+    MEDIUM = "Intellindust/ECDet_M"
+    LARGE = "Intellindust/ECDet_L"
+    XLARGE = "Intellindust/ECDet_X"
 
 
 class ECDet(nn.Module):
@@ -49,65 +45,72 @@ class ECDet(nn.Module):
         return x
 
 
-def _get_checkpoint_state_dict(checkpoint):
-    if isinstance(checkpoint, dict):
-        if "ema" in checkpoint and isinstance(checkpoint["ema"], dict):
-            return checkpoint["ema"]["module"]
-        if "model" in checkpoint:
-            return checkpoint["model"]
-        if "state_dict" in checkpoint:
-            return checkpoint["state_dict"]
-    return checkpoint
-
-
-def get_model(
-    model: ECDetModel = ECDetModel.MEDIUM,
-    checkpoint_path: str | os.PathLike | None = None,
-):
+def get_model(weights: str, model_size: ECDetModel = ECDetModel.MEDIUM, map_location: str = "cpu", strict: bool = True):
     """
-    Build ECDet model and optionally load local checkpoint weights.
+    Build an ECDet PyTorch model and load local ``.pth`` weights.
 
     Parameters
     ----------
-    model : ECDetModel
-        Enum selecting which ECDet variant to build.
-    checkpoint_path : str | os.PathLike | None
-        Optional path to a local checkpoint downloaded from W&B.
+    weights : str
+        Path to a local ``.pth`` checkpoint file.
+    model_size : ECDetModel, default=ECDetModel.MEDIUM
+        Model variant selector. Accepts ``ECDetModel`` enum entry
+        (e.g. ``ECDetModel.MEDIUM.value``).
+    map_location : str, default="cpu"
+        Device can be ``"cpu"`` or a specific CUDA device (e.g. ``"cuda:0"``).
+        Device mapping used while loading the checkpoint.
+    strict : bool, default=True
+        Strictness forwarded to ``load_state_dict``.
 
     Returns
     -------
     ECDet
-        The initialized ECDet model.
+        Initialized ECDet model with loaded checkpoint weights.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``weights`` does not exist.
+    ValueError
+        If ``model_value`` is invalid.
     """
     config_map = {
-        ECDetModel.SMALL: "ecdet_small_config.yaml",
-        ECDetModel.MEDIUM: "ecdet_medium_config.yaml",
-        ECDetModel.LARGE: "ecdet_large_config.yaml",
-        ECDetModel.XLARGE: "ecdet_xlarge_config.yaml",
+        ECDetModel.SMALL.value: "ecdet_small_config.yaml",
+        ECDetModel.MEDIUM.value: "ecdet_medium_config.yaml",
+        ECDetModel.LARGE.value: "ecdet_large_config.yaml",
+        ECDetModel.XLARGE.value: "ecdet_xlarge_config.yaml",
     }
 
-    config_filename = config_map.get(model)
+    selected_model_size = model_size.value if isinstance(model_size, ECDetModel) else model_size
+    config_filename = config_map.get(selected_model_size)
     if not config_filename:
-        raise ValueError(f"Invalid model enum value: {model}")
+        raise ValueError(f"Invalid model value: {model_size}")
 
-    PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
-    config_path = os.path.join(PROJECT_ROOT, "config", config_filename)
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    config_path = os.path.join(project_root, "config", config_filename)
 
     config = read_config(config_path)
-
-    if "use_encoder_idx" in config["encoder"]:
-        config["encoder"]["use_encoder_idx"] = [
-            idx for idx in config["encoder"]["use_encoder_idx"] if idx is not None
-        ]
-
-    if checkpoint_path is not None:
-        config["backbone"]["skip_load_backbone"] = True
-
     ecdet = ECDet(config)
 
-    if checkpoint_path is not None:
-        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-        state_dict = _get_checkpoint_state_dict(checkpoint)
-        ecdet.load_state_dict(state_dict)
+    if not os.path.exists(weights):
+        raise FileNotFoundError(f"Weights file not found: {weights}")
 
+    checkpoint = torch.load(weights, map_location=map_location)
+
+    if isinstance(checkpoint, dict) and 'model' in checkpoint and isinstance(checkpoint['model'], dict):
+        state_dict = checkpoint['model']
+    elif isinstance(checkpoint, dict) and 'state_dict' in checkpoint and isinstance(checkpoint['state_dict'], dict):
+        state_dict = checkpoint['state_dict']
+    elif isinstance(checkpoint, dict):
+        state_dict = checkpoint
+    else:
+        raise ValueError(f"Unsupported checkpoint format in: {weights}")
+
+    # Allow checkpoints saved from DDP wrappers.
+    state_dict = {
+        (key[7:] if key.startswith('module.') else key): value
+        for key, value in state_dict.items()
+    }
+
+    ecdet.load_state_dict(state_dict, strict=strict)
     return ecdet
