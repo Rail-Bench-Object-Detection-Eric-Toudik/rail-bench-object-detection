@@ -22,4 +22,6 @@ cd "$WORK/rail-bench-object-detection"
 
 mkdir -p logs
 uv sync --frozen
-uv run python train.py
+
+cd src
+uv run python main.py
