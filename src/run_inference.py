@@ -21,7 +21,7 @@ if hasattr(sys.stdout, "reconfigure"):
 # ---------------------------------------------------------------------
 # Paths / Config
 # ---------------------------------------------------------------------
-TEST_PIPELINE = False
+TEST_PIPELINE = True
 USE_SAHI = False  # Set  False for direct/"normal" inference instead of sahi
 MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
 ECDET_MODEL_NAME = "small"  # "small", "medium", "large", or "xlarge"
