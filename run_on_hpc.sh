@@ -1,7 +1,7 @@
 #!/bin/bash -l
 
 #SBATCH --gres=gpu::1
-#SBATCH --time=6:00:00
+#SBATCH --time=12:00:00
 #SBATCH --export=NONE
 #SBATCH --job-name=railbench-train
 #SBATCH --output=logs/%x-%j.out
@@ -15,6 +15,10 @@ module load python # Load Python of th eHPC system
 export PATH="$HOME/.local/bin:$PATH"
 export UV_CACHE_DIR="$WORK/uv-cache"
 mkdir -p "$UV_CACHE_DIR"
+
+Configure proxy
+export HTTP_PROXY=http://proxy.nhr.fau.de:80
+export HTTPS_PROXY=http://proxy.nhr.fau.de:80
 
 # Go to code directy, install missing dependencies (if any) and run the training
 cd "$WORK/rail-bench-object-detection"
