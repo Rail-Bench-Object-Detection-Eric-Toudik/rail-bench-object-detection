@@ -16,7 +16,7 @@ export PATH="$HOME/.local/bin:$PATH"
 export UV_CACHE_DIR="$WORK/uv-cache"
 mkdir -p "$UV_CACHE_DIR"
 
-Configure proxy
+# Configure proxy
 export HTTP_PROXY=http://proxy.nhr.fau.de:80
 export HTTPS_PROXY=http://proxy.nhr.fau.de:80
 
