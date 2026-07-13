@@ -675,7 +675,7 @@
 | Training               | epochs |           300 |
 | Training               | batch_size |            12 |
 | Training               | image_size |          1024 |
-| Training               | model_name |     `yolo11s` |
+| Training               | model_name |     `yolo11m` |
 | Training               | seed |            42 |
 | Learning Rate          | lr0 |          0.01 |
 | Learning Rate          | lrf |          0.01 |

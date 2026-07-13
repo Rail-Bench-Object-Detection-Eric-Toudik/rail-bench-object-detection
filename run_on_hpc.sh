@@ -16,10 +16,9 @@ export PATH="$HOME/.local/bin:$PATH"
 export UV_CACHE_DIR="$WORK/uv-cache"
 mkdir -p "$UV_CACHE_DIR"
 
-# SET Proxy
+# Configure proxy
 export HTTP_PROXY=http://proxy.nhr.fau.de:80
 export HTTPS_PROXY=http://proxy.nhr.fau.de:80
-
 
 # Go to code directy, install missing dependencies (if any) and run the training
 cd "$WORK/rail-bench-object-detection"
