@@ -21,10 +21,10 @@ if hasattr(sys.stdout, "reconfigure"):
 # ---------------------------------------------------------------------
 # Paths / Config
 # ---------------------------------------------------------------------
-TEST_PIPELINE = True
+TEST_PIPELINE = False
 USE_SAHI = False  # Set  False for direct/"normal" inference instead of sahi
-MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
-ECDET_MODEL_NAME = "small"  # "small", "medium", "large", or "xlarge"
+MODEL_BACKEND = "yolo"  # "yolo" or "ecdet"
+ECDET_MODEL_NAME = "medium"  # "small", "medium", "large", or "xlarge"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
@@ -32,14 +32,14 @@ OUTPUT_DIR = PROJECT_ROOT / "outputs"
 if TEST_PIPELINE:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config_pipeline_test.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "pipeline_test" / "annotations_pipeline_test.json"
-    YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_yagd292m_model:v0"
-    ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/sz437qhg_model:v0"
+    YOLO_WANDB_ARTIFACT =  "disable eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_tvxbvrao_model:v0"
+    ECDET_WANDB_ARTIFACT = "disable eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/sz437qhg_model:v0"
 
 else:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
     YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_b605bnx5_model:v0"
-    ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/sz437qhg_model:v0"
+    ECDET_WANDB_ARTIFACT = "disable eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/sz437qhg_model:v0"
 
 WANDB_ARTIFACT = ECDET_WANDB_ARTIFACT if MODEL_BACKEND == "ecdet" else YOLO_WANDB_ARTIFACT
 

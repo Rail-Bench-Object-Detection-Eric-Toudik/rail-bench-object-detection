@@ -2,7 +2,7 @@
 epochs: 300 # 300
 batch_size: 6
 image_size: 1024
-model_name: "yolo11s" # Model architecture to use; options include "yolo11n", "yolo11s", "yolo11m"
+model_name: "yolo11m" # Model architecture to use; options include "yolo11n", "yolo11s", "yolo11m"
 seed: 42
 workers: 2
 
