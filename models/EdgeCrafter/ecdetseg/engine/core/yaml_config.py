@@ -12,7 +12,7 @@ import re
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from ..data.dataloader import DataLoader
 
 from ._config import BaseConfig
 from .workspace import create
