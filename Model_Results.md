@@ -17,13 +17,7 @@
 | Training | seed | 42 |
 | Learning Rate | lr0 | 0.01 |
 | Learning Rate | lrf | 0.01 |
-| Augmentation | auto_augment | `randaugment` |
-| Color Augmentation | hsv_h | 0.01 |
-| Color Augmentation | hsv_s | 0.5 |
-| Color Augmentation | hsv_v | 0.3 |
-| Geometric Augmentation | translate | 0.1 |
-| Geometric Augmentation | scale | 0.4 |
-| Geometric Augmentation | fliplr | 0.5 |
+| Augmentation | auto_augment | `None` |
 
 ## Metrics
 
