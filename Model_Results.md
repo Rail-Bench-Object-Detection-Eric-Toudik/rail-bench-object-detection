@@ -17,13 +17,7 @@
 | Training | seed | 42 |
 | Learning Rate | lr0 | 0.01 |
 | Learning Rate | lrf | 0.01 |
-| Augmentation | auto_augment | `randaugment` |
-| Color Augmentation | hsv_h | 0.01 |
-| Color Augmentation | hsv_s | 0.5 |
-| Color Augmentation | hsv_v | 0.3 |
-| Geometric Augmentation | translate | 0.1 |
-| Geometric Augmentation | scale | 0.4 |
-| Geometric Augmentation | fliplr | 0.5 |
+| Augmentation | auto_augment | `None` |
 
 ## Metrics
 
@@ -739,7 +733,7 @@
 | Training               | epochs |           300 |
 | Training               | batch_size |            12 |
 | Training               | image_size |          1024 |
-| Training               | model_name |     `yolo11s` |
+| Training               | model_name |     `yolo11m` |
 | Training               | seed |            42 |
 | Learning Rate          | lr0 |          0.01 |
 | Learning Rate          | lrf |          0.01 |
@@ -798,30 +792,30 @@
 | 0.95 | 0.0024 | 0.0071 | 0.0098 | 0.0002 | 0.0127 | 0.0133 | 0.0096 |
 
 
-#  Yolov11M trained on slcies (baseline_yolo11s_300epochs_basic_augmentation_1024_toudik)
+#  Yolov11M trained on slcies (run_config_sahi_basic_augmentations_yolom.yaml)
 
 ## Training Configuration
 
-| Category               | Parameter |         Value |
-|------------------------|---|--------------:|
-| Training               | epochs |           300 |
-| Training               | batch_size |            12 |
-| Training               | image_size |          1024 |
-| Training               | model_name |     `yolo11s` |
-| Training               | seed |            42 |
-| Learning Rate          | lr0 |          0.01 |
-| Learning Rate          | lrf |          0.01 |
-| Augmentation           | auto_augment | `randaugment` |
-| Color Augmentation     | hsv_h |          0.01 |
-| Color Augmentation     | hsv_s |           0.5 |
-| Color Augmentation     | hsv_v |           0.3 |
-| Geometric Augmentation | translate |           0.1 |
-| Geometric Augmentation | scale |           0.4 |
-| Geometric Augmentation | fliplr |           0.5 |
-| SAHI                   | Slice_Height|          1536 |
-| SAHI                   | SLICE_WIDTH |           768 |
-| SAHI                   | OVERLAP_HEIGHT_RATIO|           0.2 |
-| SAHI                   | OVERLAP_WIDTH_RATIO|           0.3 |
+| Category                   | Parameter |         Value |
+|----------------------------|---|--------------:|
+| Training                   | epochs |           300 |
+| Training                   | batch_size |            12 |
+| Training                   | image_size |          1024 |
+| Training                   | model_name |     `yolo11s` |
+| Training                   | seed |            42 |
+| Learning Rate              | lr0 |          0.01 |
+| Learning Rate              | lrf |          0.01 |
+| Augmentation               | auto_augment | `randaugment` |
+| Color Augmentation         | hsv_h |          0.01 |
+| Color Augmentation         | hsv_s |           0.5 |
+| Color Augmentation         | hsv_v |           0.3 |
+| Geometric Augmentation     | translate |           0.1 |
+| Geometric Augmentation     | scale |           0.4 |
+| Geometric Augmentation     | fliplr |           0.5 |
+| SAHI - Training /Inference | Slice_Height|          2048 |
+| SAHI - Training /Inference          | SLICE_WIDTH |           768 |
+| SAHI - Training  /Inference         | OVERLAP_HEIGHT_RATIO|           0.2 |
+| SAHI - Training  /Inference          | OVERLAP_WIDTH_RATIO|           0.3 |
 
 ## Evaluation Results: Direct Inference
 
