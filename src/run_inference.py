@@ -22,7 +22,7 @@ if hasattr(sys.stdout, "reconfigure"):
 # Paths / Config
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
-USE_SAHI = False  # Set  False for direct/"normal" inference instead of sahi
+USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
 MODEL_BACKEND = "yolo"  # "yolo" or "ecdet"
 ECDET_MODEL_NAME = "medium"  # "small", "medium", "large", or "xlarge"
 
@@ -38,7 +38,7 @@ if TEST_PIPELINE:
 else:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
-    YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_tvxbvrao_model:v0"
+    YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_qm7q3l0e_model:v0"
     ECDET_WANDB_ARTIFACT = "disable eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/sz437qhg_model:v0"
 
 WANDB_ARTIFACT = ECDET_WANDB_ARTIFACT if MODEL_BACKEND == "ecdet" else YOLO_WANDB_ARTIFACT

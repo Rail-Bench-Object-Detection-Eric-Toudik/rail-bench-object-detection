@@ -14,11 +14,11 @@ def string_to_int_tuple(string) -> tuple[int, ...]:
 PIPELINE_TEST = False
 def main():
 
-    RUN_CONFIG_FILENAME = "run_config_sahi_basic_augmentations_yolom.yaml"
+    RUN_CONFIG_FILENAME = "run_config_sahi_basic_augmentations_yolol.yaml"
     RUN_NAME_DETAILS = RUN_CONFIG_FILENAME.removeprefix("run_config_").removesuffix(".yaml") # Details to show in the name of the run, eg. "no augmentation"
 
     PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
-    MODEL_PATH = os.path.join(PROJECT_ROOT, 'models', 'yolo11m.pt')
+    MODEL_PATH = os.path.join(PROJECT_ROOT, 'models', 'yolo11l.pt')
     RUN_NAME_DETAILS = "yolo11m_basic_augment_sahi"  # Details to show in the name of the run, eg. "no augmentation"
 
     if PIPELINE_TEST:
