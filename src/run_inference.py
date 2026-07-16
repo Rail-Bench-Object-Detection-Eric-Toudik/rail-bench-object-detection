@@ -38,7 +38,7 @@ if TEST_PIPELINE:
 else:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
-    YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_qm7q3l0e_model:v0"
+    YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_keylpne9_model:v0"
     ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/sz437qhg_model:v0"
 
 WANDB_ARTIFACT = ECDET_WANDB_ARTIFACT if MODEL_BACKEND == "ecdet" else YOLO_WANDB_ARTIFACT
@@ -1139,9 +1139,11 @@ def main():
     except Exception as e:
         print(f"Warning: failed to write normalized pred_test.json: {e}")
 
+    eval_pred_path = pred_test_path if pred_test_path is not None and pred_test_path.exists() else pred_json_path
+    print(f"\nInspecting category IDs for evaluation predictions: {eval_pred_path}")
     inspect_category_ids(
         gt_json_path=gt_coco_path,
-        pred_json_path=pred_json_path,
+        pred_json_path=eval_pred_path,
     )
 
    # metrics = evaluate_coco(
@@ -1162,12 +1164,7 @@ def main():
     )
 
     eval_artifact.add_file(str(gt_coco_path))
-    eval_artifact.add_file(str(pred_json_path))
-    try:
-        if pred_test_path is not None and pred_test_path.exists():
-            eval_artifact.add_file(str(pred_test_path))
-    except Exception:
-        pass
+    eval_artifact.add_file(str(eval_pred_path))
     wandb.log_artifact(eval_artifact)
 
     wandb.finish()
