@@ -23,7 +23,7 @@ if hasattr(sys.stdout, "reconfigure"):
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
 USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
-MODEL_BACKEND = "yolo"  # "yolo" or "ecdet"
+MODEL_BACKEND = "eced"  # "yolo" or "ecdet"
 ECDET_MODEL_NAME = "small"  # "small", "medium", "large", or "xlarge"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
