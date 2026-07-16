@@ -137,6 +137,54 @@ def download_model_from_wandb() -> Path:
     return model_path
 
 
+def print_yolo_model_information(model_path: Path) -> None:
+    """Print available YOLO checkpoint metadata before running inference."""
+    from ultralytics import YOLO
+
+    print("\nYOLO model information:")
+    print(f"W&B artifact: {WANDB_ARTIFACT}")
+    print(f"Checkpoint path: {model_path}")
+
+    model = YOLO(str(model_path))
+    model_module = getattr(model, "model", None)
+    overrides = getattr(model, "overrides", {}) or {}
+    yaml_metadata = getattr(model_module, "yaml", None)
+
+    try:
+        print(f"Task: {getattr(model, 'task', None) or 'unknown'}")
+
+        model_name = (
+            getattr(model_module, "name", None)
+            or overrides.get("model")
+            or getattr(model_module, "yaml_file", None)
+        )
+        if model_name:
+            print(f"Model name: {model_name}")
+
+        if isinstance(yaml_metadata, dict):
+            yaml_file = yaml_metadata.get("yaml_file") or yaml_metadata.get("model")
+            scale = yaml_metadata.get("scale")
+            if yaml_file:
+                print(f"YAML metadata: {yaml_file}")
+            if scale:
+                print(f"Model scale: {scale}")
+
+        names = getattr(model, "names", None)
+        if isinstance(names, dict):
+            print(f"Classes: {len(names)}")
+            print(f"Class names: {names}")
+        elif isinstance(names, list):
+            print(f"Classes: {len(names)}")
+            print(f"Class names: {dict(enumerate(names))}")
+    except Exception as exc:
+        print(f"Warning: Could not extract all YOLO model metadata: {exc}")
+
+    try:
+        model.info(verbose=True)
+    except Exception as exc:
+        print(f"Warning: Could not print Ultralytics model summary: {exc}")
+
+
 # ---------------------------------------------------------------------
 # Data Config Helpers
 # ---------------------------------------------------------------------
@@ -1040,6 +1088,8 @@ def main():
         raise ValueError("Set ECDET_WANDB_ARTIFACT to the W&B artifact path for the trained ECDet checkpoint.")
 
     model_path = download_model_from_wandb()
+    if MODEL_BACKEND == "yolo":
+        print_yolo_model_information(model_path)
 
     source_dir = resolve_split_image_dir(DATA_CONFIG_PATH, SPLIT)
     gt_coco_path = DEFAULT_GT_COCO_PATH
