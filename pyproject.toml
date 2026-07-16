@@ -17,6 +17,7 @@ dependencies = [
     "pycocotools>=2.0.11",
     "python-dotenv>=1.2.2",
     "pyyaml>=6.0.3",
+    "ruff>=0.15.21",
     "sahi>=0.11.36",
     "scipy>=1.17.1",
     "seaborn>=0.13.2",
