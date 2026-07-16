@@ -899,3 +899,76 @@
 
 
 
+# Yolo11L with SAHI 
+## Training Configuration
+
+| Category | Parameter | Value |
+|---|---|---:|
+| Training | epochs | 45 |
+| Training | batch_size | 12 |
+| Training | image_size | 1024 |
+| Training | model_name | `yolo11l` |
+| Training | seed | 42 |
+| Training | workers | 2 |
+| Learning Rate | lr0 | 0.01 |
+| Learning Rate | lrf | 0.01 |
+| Augmentation | auto_augment | `randaugment` |
+| Color Augmentation | hsv_h | 0.01 |
+| Color Augmentation | hsv_s | 0.5 |
+| Color Augmentation | hsv_v | 0.3 |
+| Geometric Augmentation | translate | 0.1 |
+| Geometric Augmentation | scale | 0.4 |
+| Geometric Augmentation | fliplr | 0.5 |
+| Blur Augmentation | blur | `False` |
+| Blur Augmentation | blur_limit | `3,10` |
+| Blur Augmentation | blur_p | 0.05 |
+| Motion Blur Augmentation | motion_blur | `False` |
+| Motion Blur Augmentation | motion_blur_limit | `3,10` |
+| Motion Blur Augmentation | motion_blur_p | 0.05 |
+| SAHI | use_sahi | `True` |
+| SAHI | slice_height | 2048 |
+| SAHI | slice_width | 768 |
+| SAHI | overlap_height_ratio | 0.2 |
+| SAHI | overlap_width_ratio | 0.3 |
+| SAHI | min_area_ratio | 0.2 |
+
+
+
+## Training results
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.2373 |
+| AP50 | 0.4309 |
+| AP75 | 0.2296 |
+| APeasy | 0.3874 |
+| APmoderate | 0.3256 |
+| APhard | 0.2373 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.5229 |
+| ARmoderate | 0.4367 |
+| ARhard | 0.3259 |
+| AR1 | 0.1033 |
+| AR10 | 0.2854 |
+| AR100 | 0.3259 |
+| AR200 | 0.3259 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal | road_vehicle | signal_pole | train | person | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.6988 | 0.5628 | 0.4020 | 0.3769 | 0.2110 | 0.5816 | 0.1832 |
+| 0.55 | 0.6642 | 0.5337 | 0.3695 | 0.3359 | 0.1633 | 0.5464 | 0.1703 |
+| 0.60 | 0.6384 | 0.5069 | 0.3319 | 0.2906 | 0.1421 | 0.5094 | 0.1587 |
+| 0.65 | 0.5944 | 0.4733 | 0.2864 | 0.2346 | 0.1185 | 0.4600 | 0.1374 |
+| 0.70 | 0.5296 | 0.4352 | 0.2351 | 0.1744 | 0.0979 | 0.4012 | 0.1053 |
+| 0.75 | 0.4568 | 0.3803 | 0.1863 | 0.1162 | 0.0742 | 0.3195 | 0.0737 |
+| 0.80 | 0.3384 | 0.3170 | 0.1443 | 0.0752 | 0.0499 | 0.2263 | 0.0417 |
+| 0.85 | 0.2016 | 0.2360 | 0.0822 | 0.0404 | 0.0289 | 0.1292 | 0.0364 |
+| 0.90 | 0.0705 | 0.1309 | 0.0345 | 0.0160 | 0.0158 | 0.0585 | 0.0107 |
+| 0.95 | 0.0051 | 0.0278 | 0.0077 | 0.0006 | 0.0016 | 0.0141 | 0.0043 |
