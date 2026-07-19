@@ -64,7 +64,7 @@ train_dataloader:
     transforms:
       mosaic_epoch: 30
       mosaic_prob: 0.75
-      stop_epoch: 60
+      stop_epoch: 1
 
   collate_fn:
     mixup_prob: 0.75

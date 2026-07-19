@@ -23,7 +23,7 @@ if hasattr(sys.stdout, "reconfigure"):
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
 USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
-MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
+MODEL_BACKEND = "eced"  # "yolo" or "ecdet"
 ECDET_MODEL_NAME = "small"  # "small", "medium", "large", or "xlarge"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -36,9 +36,9 @@ if TEST_PIPELINE:
     ECDET_WANDB_ARTIFACT = "disable eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/sz437qhg_model:v0"
 
 else:
-    DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config_sahi_train.yaml"
+    DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
-    YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_qm7q3l0e_model:v0"
+    YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_keylpne9_model:v0"
     ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/sz437qhg_model:v0"
 
 WANDB_ARTIFACT = ECDET_WANDB_ARTIFACT if MODEL_BACKEND == "ecdet" else YOLO_WANDB_ARTIFACT
@@ -135,6 +135,54 @@ def download_model_from_wandb() -> Path:
     print(f"Using model: {model_path}")
 
     return model_path
+
+
+def print_yolo_model_information(model_path: Path) -> None:
+    """Print available YOLO checkpoint metadata before running inference."""
+    from ultralytics import YOLO
+
+    print("\nYOLO model information:")
+    print(f"W&B artifact: {WANDB_ARTIFACT}")
+    print(f"Checkpoint path: {model_path}")
+
+    model = YOLO(str(model_path))
+    model_module = getattr(model, "model", None)
+    overrides = getattr(model, "overrides", {}) or {}
+    yaml_metadata = getattr(model_module, "yaml", None)
+
+    try:
+        print(f"Task: {getattr(model, 'task', None) or 'unknown'}")
+
+        model_name = (
+            getattr(model_module, "name", None)
+            or overrides.get("model")
+            or getattr(model_module, "yaml_file", None)
+        )
+        if model_name:
+            print(f"Model name: {model_name}")
+
+        if isinstance(yaml_metadata, dict):
+            yaml_file = yaml_metadata.get("yaml_file") or yaml_metadata.get("model")
+            scale = yaml_metadata.get("scale")
+            if yaml_file:
+                print(f"YAML metadata: {yaml_file}")
+            if scale:
+                print(f"Model scale: {scale}")
+
+        names = getattr(model, "names", None)
+        if isinstance(names, dict):
+            print(f"Classes: {len(names)}")
+            print(f"Class names: {names}")
+        elif isinstance(names, list):
+            print(f"Classes: {len(names)}")
+            print(f"Class names: {dict(enumerate(names))}")
+    except Exception as exc:
+        print(f"Warning: Could not extract all YOLO model metadata: {exc}")
+
+    try:
+        model.info(verbose=True)
+    except Exception as exc:
+        print(f"Warning: Could not print Ultralytics model summary: {exc}")
 
 
 # ---------------------------------------------------------------------
@@ -1040,6 +1088,8 @@ def main():
         raise ValueError("Set ECDET_WANDB_ARTIFACT to the W&B artifact path for the trained ECDet checkpoint.")
 
     model_path = download_model_from_wandb()
+    if MODEL_BACKEND == "yolo":
+        print_yolo_model_information(model_path)
 
     source_dir = resolve_split_image_dir(DATA_CONFIG_PATH, SPLIT)
     gt_coco_path = DEFAULT_GT_COCO_PATH
@@ -1089,9 +1139,11 @@ def main():
     except Exception as e:
         print(f"Warning: failed to write normalized pred_test.json: {e}")
 
+    eval_pred_path = pred_test_path if pred_test_path is not None and pred_test_path.exists() else pred_json_path
+    print(f"\nInspecting category IDs for evaluation predictions: {eval_pred_path}")
     inspect_category_ids(
         gt_json_path=gt_coco_path,
-        pred_json_path=pred_json_path,
+        pred_json_path=eval_pred_path,
     )
 
    # metrics = evaluate_coco(
@@ -1112,12 +1164,7 @@ def main():
     )
 
     eval_artifact.add_file(str(gt_coco_path))
-    eval_artifact.add_file(str(pred_json_path))
-    try:
-        if pred_test_path is not None and pred_test_path.exists():
-            eval_artifact.add_file(str(pred_test_path))
-    except Exception:
-        pass
+    eval_artifact.add_file(str(eval_pred_path))
     wandb.log_artifact(eval_artifact)
 
     wandb.finish()
