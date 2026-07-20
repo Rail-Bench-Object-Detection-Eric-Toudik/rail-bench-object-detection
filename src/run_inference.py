@@ -22,8 +22,8 @@ if hasattr(sys.stdout, "reconfigure"):
 # Paths / Config
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
-USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
-MODEL_BACKEND = "eced"  # "yolo" or "ecdet"
+USE_SAHI = False  # Set  False for direct/"normal" inference instead of sahi
+MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
 ECDET_MODEL_NAME = "small"  # "small", "medium", "large", or "xlarge"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -532,7 +532,7 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
         ecdet_module.read_config = original_read_config
     model.eval()
 
-    # RailBench uses its own 7 classes; do not apply COCO category remapping.
+    # ECDet emits internal labels; the postprocessor maps them back to RailBench category IDs.
     model.postprocessor.remap_mscoco_category = True
 
     image_size = model.config["decoder"]["eval_spatial_size"]
@@ -578,7 +578,7 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
 
                 prediction = {
                     "file_name": file_name,
-                    "category_id": int(label.item()) + 1,
+                    "category_id": int(label.item()),
                     "bbox": [
                         float(x_min),
                         float(y_min),
