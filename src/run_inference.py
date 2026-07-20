@@ -3,6 +3,7 @@ import os
 import sys
 from pathlib import Path
 
+import numpy as np
 import wandb
 import torch
 import yaml
@@ -22,8 +23,8 @@ if hasattr(sys.stdout, "reconfigure"):
 # Paths / Config
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
-USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
-MODEL_BACKEND = "eced"  # "yolo" or "ecdet"
+USE_SAHI = False  # Set  False for direct/"normal" inference instead of sahi
+MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
 ECDET_MODEL_NAME = "small"  # "small", "medium", "large", or "xlarge"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -84,6 +85,8 @@ def init_wandb_run() -> None:
     if wandb.run is not None:
         return
 
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
     load_dotenv()
 
     api_key = os.getenv("WANDB_API_KEY")
@@ -95,6 +98,7 @@ def init_wandb_run() -> None:
     wandb.init(
         project=WANDB_PROJECT,
         name=RUN_NAME,
+        dir=str(OUTPUT_DIR),
         job_type="sahi_inference_eval",
         config={
             "split": SPLIT,
@@ -116,22 +120,17 @@ def download_model_from_wandb() -> Path:
     init_wandb_run()
 
     artifact = wandb.use_artifact(WANDB_ARTIFACT, type="model")
-    artifact_dir = Path(artifact.download())
+    artifact_name = WANDB_ARTIFACT.rsplit("/", 1)[-1].replace(":", "-")
+    artifact_dir = Path(artifact.download(root=OUTPUT_DIR / "artifacts" / artifact_name))
 
-    candidates = list(artifact_dir.rglob("best.pt"))
+    expected_model_file = "best.pth" if MODEL_BACKEND == "ecdet" else "best.pt"
+    model_path = artifact_dir / expected_model_file
 
-    if not candidates:
-        candidates = list(artifact_dir.rglob("best.pth"))
-
-    if not candidates:
-        candidates = list(artifact_dir.rglob("*.pt")) + list(artifact_dir.rglob("*.pth"))
-
-    if not candidates:
+    if not model_path.exists():
         raise FileNotFoundError(
-            f"No .pt or .pth model file found in downloaded artifact directory: {artifact_dir}"
+            f"Expected model file '{expected_model_file}' not found in downloaded artifact directory: {artifact_dir}"
         )
 
-    model_path = candidates[0]
     print(f"Using model: {model_path}")
 
     return model_path
@@ -416,7 +415,7 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
     """
     from ultralytics import YOLO
 
-    print(f"\nRunning direct YOLO inference without SAHI...")
+    print("\nRunning direct YOLO inference without SAHI...")
     print(f"Model: {model_path}")
     print(f"Source directory: {source_dir}")
     
@@ -496,54 +495,12 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
     """
     Runs direct ECDet inference without SAHI and converts results to COCO format.
     """
-    from src import ecdet as ecdet_module
+    model, device, transform, model_name = _load_ecdet_model(model_path)
 
-    ecdet_model = {
-        "small": ecdet_module.ECDetModel.SMALL,
-        "medium": ecdet_module.ECDetModel.MEDIUM,
-        "large": ecdet_module.ECDetModel.LARGE,
-        "xlarge": ecdet_module.ECDetModel.XLARGE,
-    }[ECDET_MODEL_NAME]
-
-    print(f"\nRunning direct ECDet inference without SAHI...")
-    print(f"Model: {ecdet_model.value}")
+    print("\nRunning direct ECDet inference without SAHI...")
+    print(f"Model: {model_name}")
     print(f"Checkpoint: {model_path}")
     print(f"Source directory: {source_dir}")
-
-    device = torch.device(DEVICE if torch.cuda.is_available() or not DEVICE.startswith("cuda") else "cpu")
-    original_read_config = ecdet_module.read_config
-
-    def read_ecdet_config(config_path):
-        config = original_read_config(config_path)
-        use_encoder_idx = config["encoder"]["use_encoder_idx"]
-        config["encoder"]["use_encoder_idx"] = [
-            encoder_idx for encoder_idx in use_encoder_idx if encoder_idx is not None
-        ]
-        return config
-
-    ecdet_module.read_config = read_ecdet_config
-    try:
-        model = ecdet_module.get_model(
-            str(model_path),
-            model_size=ecdet_model,
-            map_location=str(device),
-        ).to(device)
-    finally:
-        ecdet_module.read_config = original_read_config
-    model.eval()
-
-    # RailBench uses its own 7 classes; do not apply COCO category remapping.
-    model.postprocessor.remap_mscoco_category = True
-
-    image_size = model.config["decoder"]["eval_spatial_size"]
-    transform = T.Compose([
-        T.Resize(image_size),
-        T.ToTensor(),
-        T.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225],
-        ),
-    ])
 
     image_paths = collect_image_paths(source_dir)
     print(f"Found {len(image_paths)} images for inference")
@@ -578,7 +535,7 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
 
                 prediction = {
                     "file_name": file_name,
-                    "category_id": int(label.item()) + 1,
+                    "category_id": int(label.item()),
                     "bbox": [
                         float(x_min),
                         float(y_min),
@@ -609,6 +566,156 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
     return result_path
 
 
+def _load_ecdet_model(model_path: Path, device: torch.device | None = None) -> tuple[torch.nn.Module, torch.device, T.Compose, str]:
+    """Load ECDet with the same preprocessing and category remapping used for direct inference."""
+    from src import ecdet as ecdet_module
+
+    ecdet_model = {
+        "small": ecdet_module.ECDetModel.SMALL,
+        "medium": ecdet_module.ECDetModel.MEDIUM,
+        "large": ecdet_module.ECDetModel.LARGE,
+        "xlarge": ecdet_module.ECDetModel.XLARGE,
+    }[ECDET_MODEL_NAME]
+
+    if device is None:
+        device = torch.device(DEVICE if torch.cuda.is_available() or not DEVICE.startswith("cuda") else "cpu")
+
+    original_read_config = ecdet_module.read_config
+
+    def read_ecdet_config(config_path: str) -> dict:
+        config = original_read_config(config_path)
+        use_encoder_idx = config["encoder"]["use_encoder_idx"]
+        config["encoder"]["use_encoder_idx"] = [
+            encoder_idx for encoder_idx in use_encoder_idx if encoder_idx is not None
+        ]
+        return config
+
+    ecdet_module.read_config = read_ecdet_config
+    try:
+        model = ecdet_module.get_model(
+            str(model_path),
+            model_size=ecdet_model,
+            map_location=str(device),
+        ).to(device)
+    finally:
+        ecdet_module.read_config = original_read_config
+    model.eval()
+
+    # ECDet emits internal labels; the postprocessor maps them back to RailBench category IDs.
+    model.postprocessor.remap_mscoco_category = True
+
+    image_size = model.config["decoder"]["eval_spatial_size"]
+    transform = T.Compose([
+        T.Resize(image_size),
+        T.ToTensor(),
+        T.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225],
+        ),
+    ])
+
+    return model, device, transform, ecdet_model.value
+
+
+def _create_ecdet_sahi_detection_model(model_path: Path, load_at_init: bool = True) -> object:
+    """Create the SAHI adapter only when ECDet sliced inference is requested."""
+    from sahi.models.base import DetectionModel
+
+    class _ECDetSahiDetectionModel(DetectionModel):
+        """SAHI DetectionModel adapter for this project's ECDet wrapper."""
+
+        def load_model(self) -> None:
+            if self.model_path is None:
+                raise ValueError("model_path is required for ECDet SAHI inference.")
+
+            model, device, transform, _ = _load_ecdet_model(Path(self.model_path), self.device)
+            self.device = device
+            self.transform = transform
+            self.set_model(model)
+
+        def set_model(self, model: torch.nn.Module, **kwargs) -> None:
+            self.model = model.to(self.device)
+            self.model.eval()
+            self.category_mapping = {
+                str(category_id): category_name
+                for category_name, category_id in CATEGORY_NAME_TO_ID.items()
+            }
+
+        def perform_inference(self, image: np.ndarray) -> None:
+            if self.model is None:
+                raise ValueError("Model is not loaded, load it by calling .load_model()")
+
+            pil_image = Image.fromarray(image).convert("RGB")
+            image_width, image_height = pil_image.size
+            image_tensor = self.transform(pil_image).unsqueeze(0).to(self.device)
+            orig_target_sizes = torch.tensor([[image_width, image_height]], device=self.device)
+
+            with torch.no_grad():
+                self._original_predictions = self.model(image_tensor, orig_target_sizes)
+
+        def _create_object_prediction_list_from_original_predictions(
+            self,
+            shift_amount_list: list[list[int]] | None = [[0, 0]],
+            full_shape_list: list[list[int]] | None = None,
+        ) -> None:
+            from sahi.prediction import ObjectPrediction
+            from sahi.utils.compatibility import fix_full_shape_list, fix_shift_amount_list
+
+            shift_amount_list = fix_shift_amount_list(shift_amount_list)
+            full_shape_list = fix_full_shape_list(full_shape_list)
+            object_prediction_list_per_image = []
+
+            for image_ind, output in enumerate(self._original_predictions):
+                shift_amount = shift_amount_list[image_ind]
+                full_shape = None if full_shape_list is None else full_shape_list[image_ind]
+                keep = output["scores"] >= self.confidence_threshold
+                scores = output["scores"][keep]
+                labels = output["labels"][keep]
+                boxes = output["boxes"][keep]
+
+                object_prediction_list = []
+                for score, label, box in zip(scores, labels, boxes):
+                    x_min, y_min, x_max, y_max = box.detach().cpu().tolist()
+                    bbox = [
+                        max(0.0, float(x_min)),
+                        max(0.0, float(y_min)),
+                        float(x_max),
+                        float(y_max),
+                    ]
+
+                    if full_shape is not None:
+                        bbox[0] = min(float(full_shape[1]), bbox[0])
+                        bbox[1] = min(float(full_shape[0]), bbox[1])
+                        bbox[2] = min(float(full_shape[1]), bbox[2])
+                        bbox[3] = min(float(full_shape[0]), bbox[3])
+
+                    if not bbox[0] < bbox[2] or not bbox[1] < bbox[3]:
+                        continue
+
+                    category_id = int(label.item())
+                    object_prediction_list.append(
+                        ObjectPrediction(
+                            bbox=bbox,
+                            category_id=category_id,
+                            category_name=self.category_mapping[str(category_id)],
+                            shift_amount=shift_amount,
+                            score=float(score.item()),
+                            full_shape=full_shape,
+                        )
+                    )
+
+                object_prediction_list_per_image.append(object_prediction_list)
+
+            self._object_prediction_list_per_image = object_prediction_list_per_image
+
+    return _ECDetSahiDetectionModel(
+        model_path=str(model_path),
+        device=DEVICE,
+        confidence_threshold=CONF_THRESHOLD,
+        load_at_init=load_at_init,
+    )
+
+
 # ---------------------------------------------------------------------
 # SAHI Prediction
 # ---------------------------------------------------------------------
@@ -616,11 +723,21 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
 def run_sahi_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> Path:
     from sahi.predict import predict
 
+    detection_model = None
+    predict_kwargs = {
+        "model_type": "ultralytics",
+        "model_path": str(model_path),
+        "model_device": DEVICE,
+        "model_confidence_threshold": CONF_THRESHOLD,
+    }
+
+    if MODEL_BACKEND == "ecdet":
+        detection_model = _create_ecdet_sahi_detection_model(model_path)
+        predict_kwargs = {}
+
     result = predict(
-        model_type="ultralytics",
-        model_path=str(model_path),
-        model_device=DEVICE,
-        model_confidence_threshold=CONF_THRESHOLD,
+        detection_model=detection_model,
+        **predict_kwargs,
 
         source=str(source_dir),
 
@@ -767,14 +884,11 @@ def save_predictions_coco(
 
     # Lade GT COCO, um image_id -> file_name zu mappen
     image_id_to_name = {}
-    available_file_names = set()
-
     if gt_coco_path is not None and gt_coco_path.exists():
         with open(gt_coco_path, "r", encoding="utf-8") as f:
             gt = json.load(f)
 
         image_id_to_name = {img["id"]: img["file_name"] for img in gt.get("images", [])}
-        available_file_names = {img["file_name"] for img in gt.get("images", [])}
     else:
         raise RuntimeError("Warning: could not resolve image dir from data config")
 
@@ -977,7 +1091,7 @@ def fix_predictions_category_ids(pred_json_path: Path, gt_json_path: Path) -> Pa
         pred_cat_ids = {p.get("category_id") for p in pred_data if isinstance(p, dict) and "category_id" in p}
         
         if not pred_cat_ids:
-            print(f"  ⚠️  Keine category_ids in Predictions gefunden")
+            print("  ⚠️  Keine category_ids in Predictions gefunden")
             return pred_json_path
         
         # Bestimme den erforderlichen Offset
@@ -1006,14 +1120,14 @@ def fix_predictions_category_ids(pred_json_path: Path, gt_json_path: Path) -> Pa
         elif pred_min == gt_min and pred_cat_ids != gt_category_ids:
             # Überprüfe ob es nur eine Subset-Issue ist (z.B. nicht alle Kategorien sind vorhanden)
             if pred_cat_ids <= gt_category_ids:
-                print(f"  ℹ️  Predictions sind eine Subset von GT (nicht alle Kategorien vorhanden)")
+                print("  ℹ️  Predictions sind eine Subset von GT (nicht alle Kategorien vorhanden)")
                 needs_shift = False
             else:
                 # Predictions haben Kategorien die nicht in GT sind
                 print(f"  ⚠️  Predictions haben Kategorien die nicht in GT sind: {pred_cat_ids - gt_category_ids}")
                 needs_shift = False
         else:
-            print(f"  ℹ️  Keine Anpassung nötig")
+            print("  ℹ️  Keine Anpassung nötig")
         
         if needs_shift:
             # Verschiebe alle category_ids um +offset
@@ -1081,9 +1195,6 @@ def main():
     if MODEL_BACKEND not in {"yolo", "ecdet"}:
         raise ValueError(f"Unsupported MODEL_BACKEND: {MODEL_BACKEND}")
 
-    if MODEL_BACKEND == "ecdet" and USE_SAHI:
-        raise NotImplementedError("SAHI inference is only implemented for the YOLO backend.")
-
     if MODEL_BACKEND == "ecdet" and not ECDET_WANDB_ARTIFACT:
         raise ValueError("Set ECDET_WANDB_ARTIFACT to the W&B artifact path for the trained ECDet checkpoint.")
 
@@ -1134,7 +1245,7 @@ def main():
             gt_coco_path,
             pred_test_path,
             score_threshold=0.2,
-            category_id_offset=1 if USE_SAHI else 0,
+            category_id_offset=1 if USE_SAHI and MODEL_BACKEND == "yolo" else 0,
         )
     except Exception as e:
         print(f"Warning: failed to write normalized pred_test.json: {e}")
