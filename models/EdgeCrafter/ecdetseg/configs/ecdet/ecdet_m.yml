@@ -52,7 +52,7 @@ optimizer:
   betas: [0.9, 0.999]
   weight_decay: 0.0001
 
-epochs: 2
+epochs: 300
 warmup_iter: 2000
 lr_gamma: 0.5
 
@@ -62,12 +62,12 @@ eval_spatial_size: [640, 640] # h w
 train_dataloader:
   dataset: 
     transforms:
-      mosaic_epoch: 30
+      mosaic_epoch: 90
       mosaic_prob: 0.75
-      stop_epoch: 60
+      stop_epoch: 180
 
   collate_fn:
     mixup_prob: 0.75
-    mixup_epoch: 30
+    mixup_epoch: 60
 
 
