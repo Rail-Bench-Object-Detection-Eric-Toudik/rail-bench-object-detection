@@ -10,6 +10,8 @@ import datetime
 import json
 import os
 import time
+from pathlib import Path
+from typing import Any, Sequence
 
 import torch
 import wandb
@@ -23,7 +25,7 @@ from .ec_engine import evaluate, train_one_epoch
 
 class ECSolver(BaseSolver):
 
-    def _wandb_config(self, job_type: str):
+    def _wandb_config(self, job_type: str) -> dict[str, object]:
         cfg = self.cfg
         config = {
             'task': getattr(cfg, 'task', None),
@@ -48,7 +50,7 @@ class ECSolver(BaseSolver):
 
         return config
 
-    def _init_wandb(self, job_type: str):
+    def _init_wandb(self, job_type: str) -> Any | None:
         if not dist_utils.is_main_process():
             return None
 
@@ -71,7 +73,7 @@ class ECSolver(BaseSolver):
             config=self._wandb_config(job_type),
         )
 
-    def _log_model_artifact(self, run, artifact_name: str, checkpoint_paths):
+    def _log_model_artifact(self, run: Any, artifact_name: str, checkpoint_paths: Sequence[Path]) -> None:
         if run is None or not dist_utils.is_main_process():
             return
 
@@ -89,6 +91,7 @@ class ECSolver(BaseSolver):
         self.train()
         args = self.cfg
         wandb_run = self._init_wandb('train')
+        artifact_id = getattr(wandb_run, 'id', wandb_run.name) if wandb_run is not None else None
 
         n_parameters, model_stats = stats(self.cfg)
         print(model_stats)
@@ -191,6 +194,8 @@ class ECSolver(BaseSolver):
                         checkpoint_paths.append(self.output_dir / f'checkpoint{epoch:04}.pth')
                     for checkpoint_path in checkpoint_paths:
                         dist_utils.save_on_master(self.state_dict(), checkpoint_path)
+                    if wandb_run is not None and artifact_id is not None:
+                        self._log_model_artifact(wandb_run, f'{artifact_id}_model', checkpoint_paths)
 
                 module = self.ema.module if self.ema else self.model
                 # compute a monotonic wandb step for evaluation logging (after the epoch's training steps)
@@ -226,7 +231,10 @@ class ECSolver(BaseSolver):
                         best_stat_print['epoch'] = epoch
                         top1 = best_stat[k]
                         if self.output_dir:
-                            dist_utils.save_on_master(self.state_dict(), self.output_dir / 'best.pth')
+                            best_checkpoint_path = self.output_dir / 'best.pth'
+                            dist_utils.save_on_master(self.state_dict(), best_checkpoint_path)
+                            if wandb_run is not None and artifact_id is not None:
+                                self._log_model_artifact(wandb_run, f'{artifact_id}_model', [best_checkpoint_path])
 
                     best_stat_print[k] = max(best_stat[k], top1)
                     print(f'best_stat: {best_stat_print}')  # global best
@@ -268,10 +276,9 @@ class ECSolver(BaseSolver):
             training_completed = True
 
             if training_completed and wandb_run is not None:
-                artifact_paths = [self.output_dir / 'best.pth', self.output_dir / 'last.pth', self.output_dir / 'eval.pth']
+                artifact_paths = [self.output_dir / 'best.pth', self.output_dir / 'last.pth']
                 if not artifact_paths[0].exists() and artifact_paths[1].exists():
                     artifact_paths[0] = artifact_paths[1]
-                artifact_id = getattr(wandb_run, 'id', wandb_run.name)
                 self._log_model_artifact(wandb_run, f'{artifact_id}_model', artifact_paths)
                 wandb_run.summary['training_time'] = total_time
                 wandb_run.summary['training_time_hms'] = total_time_str
