@@ -134,7 +134,7 @@ val_dataloader:
         - {type: Normalize, mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225]}
       policy: default
   shuffle: False
-  total_batch_size: 64
+  total_batch_size: 12
   num_workers: 4
 
 
