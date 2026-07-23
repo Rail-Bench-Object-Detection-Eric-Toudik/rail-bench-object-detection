@@ -85,7 +85,8 @@ class ECSolver(BaseSolver):
                 added = True
 
         if added:
-            run.log_artifact(artifact)
+            logged_artifact = run.log_artifact(artifact)
+            logged_artifact.wait()
 
     def fit(self, ):
         self.train()
@@ -195,7 +196,7 @@ class ECSolver(BaseSolver):
                     for checkpoint_path in checkpoint_paths:
                         dist_utils.save_on_master(self.state_dict(), checkpoint_path)
                     if wandb_run is not None and artifact_id is not None:
-                        self._log_model_artifact(wandb_run, f'{artifact_id}_model', checkpoint_paths)
+                        self._log_model_artifact(wandb_run, f'{artifact_id}_model', [self.output_dir / 'last.pth'])
 
                 module = self.ema.module if self.ema else self.model
                 # compute a monotonic wandb step for evaluation logging (after the epoch's training steps)
