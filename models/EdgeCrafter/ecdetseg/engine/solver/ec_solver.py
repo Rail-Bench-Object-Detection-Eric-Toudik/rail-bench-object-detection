@@ -85,7 +85,8 @@ class ECSolver(BaseSolver):
                 added = True
 
         if added:
-            run.log_artifact(artifact)
+            logged_artifact = run.log_artifact(artifact)
+            logged_artifact.wait()
 
     def fit(self, ):
         self.train()
