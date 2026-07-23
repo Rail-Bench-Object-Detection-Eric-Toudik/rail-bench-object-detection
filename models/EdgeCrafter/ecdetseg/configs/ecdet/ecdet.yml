@@ -121,7 +121,7 @@ train_dataloader:
     mixup_epoch: 36
 
   shuffle: True
-  total_batch_size: 12 # total batch size equals to 32 (4 * 8)
+  total_batch_size: 24 # total batch size equals to 32 (4 * 8)
   num_workers: 4
 
 
@@ -134,7 +134,7 @@ val_dataloader:
         - {type: Normalize, mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225]}
       policy: default
   shuffle: False
-  total_batch_size: 64
+  total_batch_size: 12
   num_workers: 4
 
 
