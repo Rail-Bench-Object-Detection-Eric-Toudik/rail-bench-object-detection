@@ -195,8 +195,6 @@ class ECSolver(BaseSolver):
                         checkpoint_paths.append(self.output_dir / f'checkpoint{epoch:04}.pth')
                     for checkpoint_path in checkpoint_paths:
                         dist_utils.save_on_master(self.state_dict(), checkpoint_path)
-                    if wandb_run is not None and artifact_id is not None:
-                        self._log_model_artifact(wandb_run, f'{artifact_id}_model', [self.output_dir / 'last.pth'])
 
                 module = self.ema.module if self.ema else self.model
                 # compute a monotonic wandb step for evaluation logging (after the epoch's training steps)
@@ -234,8 +232,6 @@ class ECSolver(BaseSolver):
                         if self.output_dir:
                             best_checkpoint_path = self.output_dir / 'best.pth'
                             dist_utils.save_on_master(self.state_dict(), best_checkpoint_path)
-                            if wandb_run is not None and artifact_id is not None:
-                                self._log_model_artifact(wandb_run, f'{artifact_id}_model', [best_checkpoint_path])
 
                     best_stat_print[k] = max(best_stat[k], top1)
                     print(f'best_stat: {best_stat_print}')  # global best
@@ -277,10 +273,7 @@ class ECSolver(BaseSolver):
             training_completed = True
 
             if training_completed and wandb_run is not None:
-                artifact_paths = [self.output_dir / 'best.pth', self.output_dir / 'last.pth']
-                if not artifact_paths[0].exists() and artifact_paths[1].exists():
-                    artifact_paths[0] = artifact_paths[1]
-                self._log_model_artifact(wandb_run, f'{artifact_id}_model', artifact_paths)
+                self._log_model_artifact(wandb_run, f'{artifact_id}_model', [self.output_dir / 'best.pth'])
                 wandb_run.summary['training_time'] = total_time
                 wandb_run.summary['training_time_hms'] = total_time_str
         finally:
