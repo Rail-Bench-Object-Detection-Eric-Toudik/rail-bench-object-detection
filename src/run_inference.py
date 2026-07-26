@@ -26,9 +26,11 @@ TEST_PIPELINE = False
 USE_SAHI = False  # Set  False for direct/"normal" inference instead of sahi
 MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
 ECDET_MODEL_NAME = "small"  # "small", "medium", "large", or "xlarge"
+ECDET_CHECKPOINT_SOURCE = "wandb"  # "wandb" or "local"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
+ECDET_LOCAL_CHECKPOINT_PATH = PROJECT_ROOT / "models" / "EdgeCrafter" / "ecdetseg" / "outputs" / "best.pth"
 
 if TEST_PIPELINE:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config_pipeline_test.yaml"
@@ -134,6 +136,26 @@ def download_model_from_wandb() -> Path:
     print(f"Using model: {model_path}")
 
     return model_path
+
+
+def resolve_ecdet_checkpoint_path() -> Path:
+    """Resolve the ECDet checkpoint from W&B or from a local file."""
+    if ECDET_CHECKPOINT_SOURCE == "wandb":
+        return download_model_from_wandb()
+
+    if ECDET_CHECKPOINT_SOURCE == "local":
+        if not ECDET_LOCAL_CHECKPOINT_PATH.exists():
+            raise FileNotFoundError(
+                f"Local ECDet checkpoint not found: {ECDET_LOCAL_CHECKPOINT_PATH}"
+            )
+
+        print(f"Using local ECDet checkpoint: {ECDET_LOCAL_CHECKPOINT_PATH}")
+        return ECDET_LOCAL_CHECKPOINT_PATH
+
+    raise ValueError(
+        "Unsupported ECDET_CHECKPOINT_SOURCE value: "
+        f"{ECDET_CHECKPOINT_SOURCE!r}. Expected 'wandb' or 'local'."
+    )
 
 
 def print_yolo_model_information(model_path: Path) -> None:
@@ -1198,7 +1220,11 @@ def main():
     if MODEL_BACKEND == "ecdet" and not ECDET_WANDB_ARTIFACT:
         raise ValueError("Set ECDET_WANDB_ARTIFACT to the W&B artifact path for the trained ECDet checkpoint.")
 
-    model_path = download_model_from_wandb()
+    if MODEL_BACKEND == "ecdet":
+        model_path = resolve_ecdet_checkpoint_path()
+    else:
+        model_path = download_model_from_wandb()
+
     if MODEL_BACKEND == "yolo":
         print_yolo_model_information(model_path)
 
@@ -1267,6 +1293,8 @@ def main():
     #    print(f"{key}: {value:.4f}")
 
     #wandb.log(metrics)
+
+    init_wandb_run()
 
     eval_artifact = wandb.Artifact(
         name=f"{RUN_NAME}_eval_files",
