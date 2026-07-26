@@ -25,12 +25,12 @@ if hasattr(sys.stdout, "reconfigure"):
 TEST_PIPELINE = False
 USE_SAHI = False  # Set  False for direct/"normal" inference instead of sahi
 MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
-ECDET_MODEL_NAME = "small"  # "small", "medium", "large", or "xlarge"
-ECDET_CHECKPOINT_SOURCE = "wandb"  # "wandb" or "local"
+ECDET_MODEL_NAME = "medium"  # "small", "medium", "large", or "xlarge"
+ECDET_CHECKPOINT_SOURCE = "local"  # "wandb" or "local"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
-ECDET_LOCAL_CHECKPOINT_PATH = PROJECT_ROOT / "models" / "EdgeCrafter" / "ecdetseg" / "outputs" / "best.pth"
+ECDET_LOCAL_CHECKPOINT_PATH = PROJECT_ROOT / "models" / "EdgeCrafter" / "ecdetseg" / "outputs" / "ecdet_m" / "best.pth"
 
 if TEST_PIPELINE:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config_pipeline_test.yaml"
