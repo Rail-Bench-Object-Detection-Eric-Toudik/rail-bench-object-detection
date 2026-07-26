@@ -64,7 +64,13 @@ class ECSolver(BaseSolver):
         project = getattr(self.cfg, 'wandb_project', None) or 'Rail-Bench-Object-Detection-EdgeCrafter'
         run_name = getattr(self.cfg, 'wandb_run_name', None)
         if run_name is None:
-            run_name = f'{job_type}_{self.cfg.task}_{self.output_dir.name}'
+            parts = [job_type, self.cfg.task, self.output_dir.name]
+            epochs = getattr(self.cfg, 'epochs', None)
+            if epochs is not None:
+                parts.append(f'{epochs}ep')
+            if getattr(self.cfg, 'resume', None):
+                parts.append('resume')
+            run_name = '_'.join(parts)
 
         return wandb.init(
             project=project,
