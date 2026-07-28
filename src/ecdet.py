@@ -6,7 +6,7 @@ from models.EdgeCrafter.ecdetseg.engine.edgecrafter.ecvit import ViTAdapter
 from models.EdgeCrafter.ecdetseg.engine.edgecrafter.hybrid_encoder import HybridEncoder
 from models.EdgeCrafter.ecdetseg.engine.edgecrafter.decoder import ECTransformer
 from models.EdgeCrafter.ecdetseg.engine.edgecrafter.postprocessor import PostProcessor
-from read_config import read_config
+from src.read_config import read_config
 
 from enum import Enum
 
