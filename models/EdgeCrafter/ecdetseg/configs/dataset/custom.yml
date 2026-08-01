@@ -6,7 +6,7 @@ evaluator:
   verbose: True
 
 num_classes: 7 # your dataset classes
-remap_mscoco_category: False
+remap_mscoco_category: True
 
 train_dataloader:
   type: DataLoader
