@@ -1,6 +1,6 @@
 #!/bin/bash -l
 
-#SBATCH --gres=gpu::2
+#SBATCH --gres=gpu:v100:2
 #SBATCH --time=24:00:00
 #SBATCH --export=NONE
 #SBATCH --job-name=railbench-train
