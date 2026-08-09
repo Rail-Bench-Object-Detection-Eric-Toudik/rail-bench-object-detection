@@ -972,3 +972,283 @@
 | 0.85 | 0.2016 | 0.2360 | 0.0822 | 0.0404 | 0.0289 | 0.1292 | 0.0364 |
 | 0.90 | 0.0705 | 0.1309 | 0.0345 | 0.0160 | 0.0158 | 0.0585 | 0.0107 |
 | 0.95 | 0.0051 | 0.0278 | 0.0077 | 0.0006 | 0.0016 | 0.0141 | 0.0043 |
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# EdgeCrafter
+
+## EdgeCrafter Configuration
+
+### General
+
+| Category | Parameter | Value |
+|---|---|---:|
+| Includes | custom dataset | `../dataset/custom.yml` |
+| Includes | base config | `ecdet.yml` |
+| Output | output_dir | `outputs/ecdet_m` |
+| Task | task | `detection` |
+| Model | model | `ECDet` |
+| Criterion | criterion | `ECCriterion` |
+| Postprocessing | postprocessor | `PostProcessor` |
+| Training | epochs | 99 |
+| Training | warmup_iter | 2000 |
+| Training | lr_gamma | 0.5 |
+| Evaluation | eval_spatial_size | `[640, 640]` |
+| Checkpointing | checkpoint_freq | 5 |
+| Loss | use_focal_loss | `True` |
+
+### Model Architecture
+
+| Component | Parameter | Value |
+|---|---|---:|
+| ECDet | backbone | `ViTAdapter` |
+| ECDet | encoder | `HybridEncoder` |
+| ECDet | decoder | `ECTransformer` |
+| ViTAdapter | name | `ecvittplus` |
+| ViTAdapter | embed_dim | 256 |
+| ViTAdapter | num_heads | 4 |
+| ViTAdapter | interaction_indexes | `[10, 11]` |
+| ViTAdapter | weights_path | `ecvits/ecvittplus.pth` |
+| HybridEncoder | in_channels | `[256, 256, 256]` |
+| HybridEncoder | feat_strides | `[8, 16, 32]` |
+| HybridEncoder | hidden_dim | 256 |
+| HybridEncoder | depth_mult | 0.67 |
+| HybridEncoder | expansion | 0.75 |
+| HybridEncoder | dim_feedforward | 512 |
+| HybridEncoder | act | `silu` |
+| HybridEncoder | use_encoder_idx | `[2]` |
+| HybridEncoder | num_encoder_layers | 1 |
+| HybridEncoder | nhead | 8 |
+| HybridEncoder | dropout | 0.0 |
+| HybridEncoder | csp_type | `csp2` |
+| HybridEncoder | fuse_op | `sum` |
+| ECTransformer | feat_channels | `[256, 256, 256]` |
+| ECTransformer | feat_strides | `[8, 16, 32]` |
+| ECTransformer | hidden_dim | 256 |
+| ECTransformer | num_levels | 3 |
+| ECTransformer | num_layers | 4 |
+| ECTransformer | eval_idx | -1 |
+| ECTransformer | num_queries | 300 |
+| ECTransformer | num_denoising | 100 |
+| ECTransformer | label_noise_ratio | 0.5 |
+| ECTransformer | box_noise_scale | 1.0 |
+| ECTransformer | reg_max | 32 |
+| ECTransformer | reg_scale | 4 |
+| ECTransformer | layer_scale | 1 |
+| ECTransformer | num_points | `[3, 6, 3]` |
+| ECTransformer | cross_attn_method | `default` |
+| ECTransformer | query_select_method | `default` |
+| ECTransformer | activation | `silu` |
+| ECTransformer | dim_feedforward | 1024 |
+| PostProcessor | num_top_queries | 300 |
+
+### Loss and Matching
+
+| Component | Parameter | Value |
+|---|---|---:|
+| ECCriterion | weight_dict | `{loss_mal: 1, loss_bbox: 5, loss_giou: 2, loss_fgl: 0.15, loss_ddf: 1.5}` |
+| ECCriterion | losses | `['mal', 'boxes', 'local']` |
+| ECCriterion | gamma | 1.5 |
+| ECCriterion | alpha | 0.75 |
+| ECCriterion | reg_max | 32 |
+| Matcher | type | `HungarianMatcher` |
+| Matcher | weight_dict | `{cost_class: 2, cost_bbox: 5, cost_giou: 2}` |
+| Matcher | alpha | 0.25 |
+| Matcher | gamma | 2.0 |
+
+### Optimizer and LR Schedule
+
+| Category | Parameter | Value |
+|---|---|---:|
+| Optimizer | type | `AdamW` |
+| Optimizer | lr | 0.0005 |
+| Optimizer | betas | `[0.9, 0.999]` |
+| Optimizer | weight_decay | 0.0001 |
+| Optimizer param group | backbone non-norm/bn/bias lr | 0.000025 |
+| Optimizer param group | backbone norm/bn/bias lr | 0.000025 |
+| Optimizer param group | backbone norm/bn/bias weight_decay | 0.0 |
+| Optimizer param group | non-backbone norm/bn/bias weight_decay | 0.0 |
+| LR Scheduler | type | `flatcosine` |
+| LR Scheduler | lr_gamma | 0.5 |
+| LR Scheduler | warmup_iter | 2000 |
+| LR Scheduler | flat_epoch | `~` |
+
+### Training and Augmentation
+
+| Category | Parameter | Value |
+|---|---|---:|
+| Train dataloader | total_batch_size | 24 |
+| Train dataloader | num_workers | 4 |
+| Train dataloader | shuffle | `True` |
+| Train transforms | policy | `stop_epoch` |
+| Train transforms | mosaic_epoch | 30 |
+| Train transforms | mosaic_prob | 0.75 |
+| Train transforms | stop_epoch | 90 |
+| Train transforms | remove_ops | `['Mosaic', 'RandomPhotometricDistort', 'RandomZoomOut', 'RandomIoUCrop']` |
+| Collate function | type | `BatchImageCollateFunction` |
+| Collate function | mixup_prob | 0.75 |
+| Collate function | mixup_epoch | 20 |
+
+### Transform Pipeline
+
+| Order | Transform | Key Parameters |
+|---:|---|---|
+| 1 | `Mosaic` | `output_size=320`, `rotation_range=10`, `translation_range=[0.1, 0.1]`, `scaling_range=[0.5, 1.5]` |
+| 2 | `RandomPhotometricDistort` | `p=0.5` |
+| 3 | `RandomZoomOut` | `fill=0` |
+| 4 | `RandomIoUCrop` | `p=0.8` |
+| 5 | `SanitizeBoundingBoxes` | `min_size=1` |
+| 6 | `RandomHorizontalFlip` | default |
+| 7 | `Resize` | `size=[640, 640]` |
+| 8 | `SanitizeBoundingBoxes` | `min_size=1` |
+| 9 | `ConvertPILImage` | `dtype='float32'`, `scale=True` |
+| 10 | `Normalize` | `mean=[0.485, 0.456, 0.406]`, `std=[0.229, 0.224, 0.225]` |
+| 11 | `ConvertBoxes` | `fmt='cxcywh'`, `normalize=True` |
+
+### Validation and Runtime
+
+| Category | Parameter | Value |
+|---|---|---:|
+| Validation | eval_spatial_size | `[640, 640]` |
+| Val dataloader | total_batch_size | 12 |
+| Val dataloader | num_workers | 4 |
+| Val dataloader | shuffle | `False` |
+| Val transforms | resize | `[640, 640]` |
+| Runtime | print_freq | 500 |
+| Runtime | sync_bn | `True` |
+| Runtime | find_unused_parameters | `False` |
+| Runtime | use_amp | `True` |
+| Runtime | use_ema | `True` |
+| EMA | decay | 0.9999 |
+| EMA | warmups | 1000 |
+| EMA | start | 0 |
+| Runtime | clip_max_norm | 0.1 |
+
+## Evaluation Results: EdgeCrafter Direct Inference
+
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.1168 |
+| AP50 | 0.2407 |
+| AP75 | 0.0991 |
+| APeasy | 0.2295 |
+| APmoderate | 0.1595 |
+| APhard | 0.1168 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.3540 |
+| ARmoderate | 0.2449 |
+| ARhard | 0.1768 |
+| AR1 | 0.0756 |
+| AR10 | 0.1563 |
+| AR100 | 0.1768 |
+| AR200 | 0.1768 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal | road_vehicle | train | signal_pole | person | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.2612 | 0.1577 | 0.3076 | 0.4131 | 0.0779 | 0.3474 | 0.1199 |
+| 0.55 | 0.2305 | 0.1417 | 0.2671 | 0.3976 | 0.0611 | 0.2969 | 0.1121 |
+| 0.60 | 0.1996 | 0.1254 | 0.2269 | 0.3565 | 0.0436 | 0.2395 | 0.0951 |
+| 0.65 | 0.1707 | 0.1099 | 0.1863 | 0.3278 | 0.0306 | 0.1938 | 0.0824 |
+| 0.70 | 0.1409 | 0.0922 | 0.1441 | 0.2771 | 0.0240 | 0.1448 | 0.0593 |
+| 0.75 | 0.1136 | 0.0756 | 0.1074 | 0.2448 | 0.0188 | 0.1031 | 0.0302 |
+| 0.80 | 0.0802 | 0.0593 | 0.0760 | 0.1939 | 0.0102 | 0.0667 | 0.0128 |
+| 0.85 | 0.0481 | 0.0414 | 0.0541 | 0.1358 | 0.0028 | 0.0353 | 0.0090 |
+| 0.90 | 0.0197 | 0.0193 | 0.0212 | 0.0757 | 0.0011 | 0.0154 | 0.0058 |
+| 0.95 | 0.0099 | 0.0017 | 0.0109 | 0.0032 | 0.0000 | 0.0106 | 0.0034 |
+
+
+## Evaluation Results: EdgeCrafter + SAHI Inference
+
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.2469 |
+| AP50 | 0.4750 |
+| AP75 | 0.2227 |
+| APeasy | 0.4055 |
+| APmoderate | 0.3299 |
+| APhard | 0.2469 |
+
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.5718 |
+| ARmoderate | 0.4728 |
+| ARhard | 0.3706 |
+| AR1 | 0.1103 |
+| AR10 | 0.3057 |
+| AR100 | 0.3703 |
+| AR200 | 0.3706 |
+
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal | signal_pole | train | road_vehicle | person | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.7427 | 0.4615 | 0.3734 | 0.2557 | 0.4269 | 0.6759 | 0.3891 |
+| 0.55 | 0.7109 | 0.4346 | 0.3063 | 0.2189 | 0.3739 | 0.6318 | 0.3443 |
+| 0.60 | 0.6723 | 0.4037 | 0.2601 | 0.1744 | 0.3182 | 0.5745 | 0.3401 |
+| 0.65 | 0.6149 | 0.3643 | 0.2013 | 0.1542 | 0.2662 | 0.5117 | 0.2921 |
+| 0.70 | 0.5474 | 0.3211 | 0.1417 | 0.1254 | 0.2116 | 0.4172 | 0.2229 |
+| 0.75 | 0.4549 | 0.2736 | 0.0942 | 0.0973 | 0.1585 | 0.3169 | 0.1634 |
+| 0.80 | 0.3354 | 0.2173 | 0.0503 | 0.0792 | 0.1138 | 0.2148 | 0.1290 |
+| 0.85 | 0.1931 | 0.1552 | 0.0257 | 0.0552 | 0.0796 | 0.1369 | 0.0810 |
+| 0.90 | 0.0715 | 0.0785 | 0.0140 | 0.0330 | 0.0386 | 0.0612 | 0.0316 |
+| 0.95 | 0.0067 | 0.0048 | 0.0006 | 0.0065 | 0.0063 | 0.0132 | 0.0110 |
