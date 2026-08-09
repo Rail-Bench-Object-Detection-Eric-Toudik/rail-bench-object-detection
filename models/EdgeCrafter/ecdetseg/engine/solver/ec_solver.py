@@ -94,6 +94,19 @@ class ECSolver(BaseSolver):
             logged_artifact = run.log_artifact(artifact)
             logged_artifact.wait()
 
+    def _resolve_final_model_checkpoint_paths(self) -> list[Path]:
+        """Return the final checkpoint file(s) that should be logged to W&B."""
+        best_checkpoint_path = self.output_dir / 'best.pth'
+        last_checkpoint_path = self.output_dir / 'last.pth'
+
+        if best_checkpoint_path.exists():
+            return [best_checkpoint_path]
+
+        if last_checkpoint_path.exists():
+            return [last_checkpoint_path]
+
+        return []
+
     def fit(self, ):
         self.train()
         args = self.cfg
@@ -279,7 +292,14 @@ class ECSolver(BaseSolver):
             training_completed = True
 
             if training_completed and wandb_run is not None:
-                self._log_model_artifact(wandb_run, f'{artifact_id}_model', [self.output_dir / 'best.pth'])
+                checkpoint_paths = self._resolve_final_model_checkpoint_paths()
+                if checkpoint_paths:
+                    self._log_model_artifact(wandb_run, f'{artifact_id}_model', checkpoint_paths)
+                else:
+                    print(
+                        "Warning: no final checkpoint found for W&B artifact upload. "
+                        f"Expected best.pth or last.pth in {self.output_dir}"
+                    )
                 wandb_run.summary['training_time'] = total_time
                 wandb_run.summary['training_time_hms'] = total_time_str
         finally:
