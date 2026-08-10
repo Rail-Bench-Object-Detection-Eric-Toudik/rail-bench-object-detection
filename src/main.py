@@ -4,7 +4,7 @@ from pprint import pformat
 import wandb
 from dotenv import load_dotenv
 from ultralytics import YOLO, settings
-from read_config import read_config
+from src.read_config import read_config
 import albumentations as A
 
 

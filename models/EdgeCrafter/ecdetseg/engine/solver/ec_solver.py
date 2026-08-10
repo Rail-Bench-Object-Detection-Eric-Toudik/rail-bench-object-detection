@@ -64,7 +64,13 @@ class ECSolver(BaseSolver):
         project = getattr(self.cfg, 'wandb_project', None) or 'Rail-Bench-Object-Detection-EdgeCrafter'
         run_name = getattr(self.cfg, 'wandb_run_name', None)
         if run_name is None:
-            run_name = f'{job_type}_{self.cfg.task}_{self.output_dir.name}'
+            parts = [job_type, self.cfg.task, self.output_dir.name]
+            epochs = getattr(self.cfg, 'epochs', None)
+            if epochs is not None:
+                parts.append(f'{epochs}ep')
+            if getattr(self.cfg, 'resume', None):
+                parts.append('resume')
+            run_name = '_'.join(parts)
 
         return wandb.init(
             project=project,
@@ -87,6 +93,19 @@ class ECSolver(BaseSolver):
         if added:
             logged_artifact = run.log_artifact(artifact)
             logged_artifact.wait()
+
+    def _resolve_final_model_checkpoint_paths(self) -> list[Path]:
+        """Return the final checkpoint file(s) that should be logged to W&B."""
+        best_checkpoint_path = self.output_dir / 'best.pth'
+        last_checkpoint_path = self.output_dir / 'last.pth'
+
+        if best_checkpoint_path.exists():
+            return [best_checkpoint_path]
+
+        if last_checkpoint_path.exists():
+            return [last_checkpoint_path]
+
+        return []
 
     def fit(self, ):
         self.train()
@@ -273,7 +292,14 @@ class ECSolver(BaseSolver):
             training_completed = True
 
             if training_completed and wandb_run is not None:
-                self._log_model_artifact(wandb_run, f'{artifact_id}_model', [self.output_dir / 'best.pth'])
+                checkpoint_paths = self._resolve_final_model_checkpoint_paths()
+                if checkpoint_paths:
+                    self._log_model_artifact(wandb_run, f'{artifact_id}_model', checkpoint_paths)
+                else:
+                    print(
+                        "Warning: no final checkpoint found for W&B artifact upload. "
+                        f"Expected best.pth or last.pth in {self.output_dir}"
+                    )
                 wandb_run.summary['training_time'] = total_time
                 wandb_run.summary['training_time_hms'] = total_time_str
         finally:

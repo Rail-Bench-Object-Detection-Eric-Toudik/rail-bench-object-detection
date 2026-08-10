@@ -23,12 +23,14 @@ if hasattr(sys.stdout, "reconfigure"):
 # Paths / Config
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
-USE_SAHI = False  # Set  False for direct/"normal" inference instead of sahi
+USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
 MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
-ECDET_MODEL_NAME = "small"  # "small", "medium", "large", or "xlarge"
+ECDET_MODEL_NAME = "large"  # "small", "medium", "large", or "xlarge"
+ECDET_CHECKPOINT_SOURCE = "wandb"  # "wandb" or "local"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
+ECDET_LOCAL_CHECKPOINT_PATH = PROJECT_ROOT / "models" / "EdgeCrafter" / "ecdetseg" / "outputs" / "ecdet_m" / "best.pth"
 
 if TEST_PIPELINE:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config_pipeline_test.yaml"
@@ -40,7 +42,7 @@ else:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
     YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_keylpne9_model:v0"
-    ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/sz437qhg_model:v0"
+    ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/3qpxzl2b_model:v0"
 
 WANDB_ARTIFACT = ECDET_WANDB_ARTIFACT if MODEL_BACKEND == "ecdet" else YOLO_WANDB_ARTIFACT
 
@@ -134,6 +136,26 @@ def download_model_from_wandb() -> Path:
     print(f"Using model: {model_path}")
 
     return model_path
+
+
+def resolve_ecdet_checkpoint_path() -> Path:
+    """Resolve the ECDet checkpoint from W&B or from a local file."""
+    if ECDET_CHECKPOINT_SOURCE == "wandb":
+        return download_model_from_wandb()
+
+    if ECDET_CHECKPOINT_SOURCE == "local":
+        if not ECDET_LOCAL_CHECKPOINT_PATH.exists():
+            raise FileNotFoundError(
+                f"Local ECDet checkpoint not found: {ECDET_LOCAL_CHECKPOINT_PATH}"
+            )
+
+        print(f"Using local ECDet checkpoint: {ECDET_LOCAL_CHECKPOINT_PATH}")
+        return ECDET_LOCAL_CHECKPOINT_PATH
+
+    raise ValueError(
+        "Unsupported ECDET_CHECKPOINT_SOURCE value: "
+        f"{ECDET_CHECKPOINT_SOURCE!r}. Expected 'wandb' or 'local'."
+    )
 
 
 def print_yolo_model_information(model_path: Path) -> None:
@@ -533,9 +555,11 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
                 if bbox_width <= 0 or bbox_height <= 0:
                     continue
 
+                raw_category_id = int(label.item())
+
                 prediction = {
                     "file_name": file_name,
-                    "category_id": int(label.item()),
+                    "category_id": _ecdet_output_category_id(raw_category_id),
                     "bbox": [
                         float(x_min),
                         float(y_min),
@@ -636,10 +660,6 @@ def _create_ecdet_sahi_detection_model(model_path: Path, load_at_init: bool = Tr
         def set_model(self, model: torch.nn.Module, **kwargs) -> None:
             self.model = model.to(self.device)
             self.model.eval()
-            self.category_mapping = {
-                str(category_id): category_name
-                for category_name, category_id in CATEGORY_NAME_TO_ID.items()
-            }
 
         def perform_inference(self, image: np.ndarray) -> None:
             if self.model is None:
@@ -692,12 +712,12 @@ def _create_ecdet_sahi_detection_model(model_path: Path, load_at_init: bool = Tr
                     if not bbox[0] < bbox[2] or not bbox[1] < bbox[3]:
                         continue
 
-                    category_id = int(label.item())
+                    raw_category_id = int(label.item())
                     object_prediction_list.append(
                         ObjectPrediction(
                             bbox=bbox,
-                            category_id=category_id,
-                            category_name=self.category_mapping[str(category_id)],
+                            category_id=_ecdet_output_category_id(raw_category_id),
+                            category_name=_ecdet_category_name(raw_category_id),
                             shift_amount=shift_amount,
                             score=float(score.item()),
                             full_shape=full_shape,
@@ -818,6 +838,25 @@ CATEGORY_NAME_TO_ID = {
     "road_vehicle": 6,
     "bicycle": 7,
 }
+
+ECDET_SAHI_CATEGORY_NAMES = tuple(
+    category_name
+    for category_name, category_id in sorted(CATEGORY_NAME_TO_ID.items(), key=lambda item: item[1])
+)
+
+
+def _ecdet_category_name(category_id: int) -> str:
+    """Return the RailBench category name for ECDet's zero-based label ids."""
+    if 0 <= category_id < len(ECDET_SAHI_CATEGORY_NAMES):
+        return ECDET_SAHI_CATEGORY_NAMES[category_id]
+    raise KeyError(category_id)
+
+
+def _ecdet_output_category_id(category_id: int) -> int:
+    """Convert ECDet's zero-based label ids to RailBench's one-based category ids."""
+    if 0 <= category_id < len(ECDET_SAHI_CATEGORY_NAMES):
+        return category_id + 1
+    raise KeyError(category_id)
 
 
 def _clamp_score(s: float) -> float:
@@ -1198,7 +1237,11 @@ def main():
     if MODEL_BACKEND == "ecdet" and not ECDET_WANDB_ARTIFACT:
         raise ValueError("Set ECDET_WANDB_ARTIFACT to the W&B artifact path for the trained ECDet checkpoint.")
 
-    model_path = download_model_from_wandb()
+    if MODEL_BACKEND == "ecdet":
+        model_path = resolve_ecdet_checkpoint_path()
+    else:
+        model_path = download_model_from_wandb()
+
     if MODEL_BACKEND == "yolo":
         print_yolo_model_information(model_path)
 
@@ -1267,6 +1310,8 @@ def main():
     #    print(f"{key}: {value:.4f}")
 
     #wandb.log(metrics)
+
+    init_wandb_run()
 
     eval_artifact = wandb.Artifact(
         name=f"{RUN_NAME}_eval_files",
