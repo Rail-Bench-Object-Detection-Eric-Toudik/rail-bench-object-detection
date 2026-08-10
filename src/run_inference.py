@@ -23,10 +23,10 @@ if hasattr(sys.stdout, "reconfigure"):
 # Paths / Config
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
-USE_SAHI = False  # Set  False for direct/"normal" inference instead of sahi
+USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
 MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
-ECDET_MODEL_NAME = "medium"  # "small", "medium", "large", or "xlarge"
-ECDET_CHECKPOINT_SOURCE = "local"  # "wandb" or "local"
+ECDET_MODEL_NAME = "large"  # "small", "medium", "large", or "xlarge"
+ECDET_CHECKPOINT_SOURCE = "wandb"  # "wandb" or "local"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
@@ -42,7 +42,7 @@ else:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
     YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_keylpne9_model:v0"
-    ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/sz437qhg_model:v0"
+    ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/3qpxzl2b_model:v0"
 
 WANDB_ARTIFACT = ECDET_WANDB_ARTIFACT if MODEL_BACKEND == "ecdet" else YOLO_WANDB_ARTIFACT
 
@@ -555,9 +555,11 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
                 if bbox_width <= 0 or bbox_height <= 0:
                     continue
 
+                raw_category_id = int(label.item())
+
                 prediction = {
                     "file_name": file_name,
-                    "category_id": int(label.item()),
+                    "category_id": _ecdet_output_category_id(raw_category_id),
                     "bbox": [
                         float(x_min),
                         float(y_min),
@@ -658,10 +660,6 @@ def _create_ecdet_sahi_detection_model(model_path: Path, load_at_init: bool = Tr
         def set_model(self, model: torch.nn.Module, **kwargs) -> None:
             self.model = model.to(self.device)
             self.model.eval()
-            self.category_mapping = {
-                str(category_id): category_name
-                for category_name, category_id in CATEGORY_NAME_TO_ID.items()
-            }
 
         def perform_inference(self, image: np.ndarray) -> None:
             if self.model is None:
@@ -714,12 +712,12 @@ def _create_ecdet_sahi_detection_model(model_path: Path, load_at_init: bool = Tr
                     if not bbox[0] < bbox[2] or not bbox[1] < bbox[3]:
                         continue
 
-                    category_id = int(label.item())
+                    raw_category_id = int(label.item())
                     object_prediction_list.append(
                         ObjectPrediction(
                             bbox=bbox,
-                            category_id=category_id,
-                            category_name=self.category_mapping[str(category_id)],
+                            category_id=_ecdet_output_category_id(raw_category_id),
+                            category_name=_ecdet_category_name(raw_category_id),
                             shift_amount=shift_amount,
                             score=float(score.item()),
                             full_shape=full_shape,
@@ -840,6 +838,25 @@ CATEGORY_NAME_TO_ID = {
     "road_vehicle": 6,
     "bicycle": 7,
 }
+
+ECDET_SAHI_CATEGORY_NAMES = tuple(
+    category_name
+    for category_name, category_id in sorted(CATEGORY_NAME_TO_ID.items(), key=lambda item: item[1])
+)
+
+
+def _ecdet_category_name(category_id: int) -> str:
+    """Return the RailBench category name for ECDet's zero-based label ids."""
+    if 0 <= category_id < len(ECDET_SAHI_CATEGORY_NAMES):
+        return ECDET_SAHI_CATEGORY_NAMES[category_id]
+    raise KeyError(category_id)
+
+
+def _ecdet_output_category_id(category_id: int) -> int:
+    """Convert ECDet's zero-based label ids to RailBench's one-based category ids."""
+    if 0 <= category_id < len(ECDET_SAHI_CATEGORY_NAMES):
+        return category_id + 1
+    raise KeyError(category_id)
 
 
 def _clamp_score(s: float) -> float:
