@@ -30,7 +30,7 @@ val_dataloader:
   dataset:
     type: CocoDetection
     img_folder: ../../../data/images/val
-    ann_file: ../../../data/coco_annotations/objects/annotations_val_oversampled.json
+    ann_file: ../../../data/coco_annotations/objects/annotations_val.json
     return_masks: False
     transforms:
       type: Compose
