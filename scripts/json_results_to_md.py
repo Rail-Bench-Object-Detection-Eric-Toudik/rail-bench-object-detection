@@ -150,7 +150,7 @@ if __name__ == "__main__":
 
     markdown = convert_eval_text_to_markdown(
         raw_text,
-        title="Evaluation Results: EdgeCrafter + SAHI Inference",
+        title="Evaluation Results: EdgeCrafter + Oversampling + No SAHI, EVAL With SAHI",
     )
 
     output_path.write_text(markdown, encoding="utf-8")

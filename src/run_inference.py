@@ -27,6 +27,11 @@ USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
 MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
 ECDET_MODEL_NAME = "large"  # "small", "medium", "large", or "xlarge"
 ECDET_CHECKPOINT_SOURCE = "wandb"  # "wandb" or "local"
+# Manual label indexing per backend (no auto-detection).
+# - "zero_based": model outputs 0..6
+# - "one_based": model outputs 1..7
+YOLO_LABEL_INDEXING = "zero_based"
+ECDET_LABEL_INDEXING = "one_based"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
@@ -42,7 +47,7 @@ else:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
     YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_keylpne9_model:v0"
-    ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/3qpxzl2b_model:v0"
+    ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/jcaaxdfz_model:v0"
 
 WANDB_ARTIFACT = ECDET_WANDB_ARTIFACT if MODEL_BACKEND == "ecdet" else YOLO_WANDB_ARTIFACT
 
@@ -114,6 +119,8 @@ def init_wandb_run() -> None:
             "wandb_artifact": WANDB_ARTIFACT,
             "model_backend": MODEL_BACKEND,
             "ecdet_model": ECDET_MODEL_NAME if MODEL_BACKEND == "ecdet" else None,
+            "yolo_label_indexing": YOLO_LABEL_INDEXING,
+            "ecdet_label_indexing": ECDET_LABEL_INDEXING,
         },
     )
 
@@ -478,8 +485,8 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
                     bbox_w = float(x2 - x1)
                     bbox_h = float(y2 - y1)
                     
-                    # Kategorie-ID (YOLO gibt 0-indizierte IDs zurück, GT ist aber 1-indiziert)
-                    category_id = int(box.cls[0].item()) + 1
+                    raw_category_id = int(box.cls[0].item())
+                    category_id = _to_railbench_category_id(raw_category_id, YOLO_LABEL_INDEXING)
 
                     # Konfidenz-Score
                     confidence = float(box.conf[0].item())
@@ -559,7 +566,7 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
 
                 prediction = {
                     "file_name": file_name,
-                    "category_id": _ecdet_output_category_id(raw_category_id),
+                    "category_id": _ecdet_output_category_id(raw_category_id, label_mode=ECDET_LABEL_INDEXING),
                     "bbox": [
                         float(x_min),
                         float(y_min),
@@ -693,6 +700,8 @@ def _create_ecdet_sahi_detection_model(model_path: Path, load_at_init: bool = Tr
                 labels = output["labels"][keep]
                 boxes = output["boxes"][keep]
 
+                label_mode = ECDET_LABEL_INDEXING
+
                 object_prediction_list = []
                 for score, label, box in zip(scores, labels, boxes):
                     x_min, y_min, x_max, y_max = box.detach().cpu().tolist()
@@ -716,8 +725,8 @@ def _create_ecdet_sahi_detection_model(model_path: Path, load_at_init: bool = Tr
                     object_prediction_list.append(
                         ObjectPrediction(
                             bbox=bbox,
-                            category_id=_ecdet_output_category_id(raw_category_id),
-                            category_name=_ecdet_category_name(raw_category_id),
+                            category_id=_ecdet_output_category_id(raw_category_id, label_mode=label_mode),
+                            category_name=_ecdet_category_name(raw_category_id, label_mode=label_mode),
                             shift_amount=shift_amount,
                             score=float(score.item()),
                             full_shape=full_shape,
@@ -845,18 +854,40 @@ ECDET_SAHI_CATEGORY_NAMES = tuple(
 )
 
 
-def _ecdet_category_name(category_id: int) -> str:
-    """Return the RailBench category name for ECDet's zero-based label ids."""
-    if 0 <= category_id < len(ECDET_SAHI_CATEGORY_NAMES):
-        return ECDET_SAHI_CATEGORY_NAMES[category_id]
+def _ecdet_category_name(category_id: int, label_mode: str = "zero_based") -> str:
+    """Resolve class name from ECDet category ids for the configured label indexing."""
+    normalized_category_id = _ecdet_output_category_id(category_id, label_mode=label_mode)
+    return ECDET_SAHI_CATEGORY_NAMES[normalized_category_id - 1]
+
+
+def _validate_label_mode(label_mode: str) -> str:
+    valid_modes = {"zero_based", "one_based"}
+    if label_mode not in valid_modes:
+        raise ValueError(
+            f"Unsupported label mode {label_mode!r}. "
+            "Use 'zero_based' or 'one_based'."
+        )
+    return label_mode
+
+
+def _to_railbench_category_id(category_id: int, label_mode: str) -> int:
+    """Convert configured label indexing to RailBench one-based category ids (1..7)."""
+    label_mode = _validate_label_mode(label_mode)
+    max_category_id = len(ECDET_SAHI_CATEGORY_NAMES)
+
+    if label_mode == "zero_based":
+        if 0 <= category_id < max_category_id:
+            return category_id + 1
+        raise KeyError(category_id)
+
+    if 1 <= category_id <= max_category_id:
+        return category_id
     raise KeyError(category_id)
 
 
-def _ecdet_output_category_id(category_id: int) -> int:
-    """Convert ECDet's zero-based label ids to RailBench's one-based category ids."""
-    if 0 <= category_id < len(ECDET_SAHI_CATEGORY_NAMES):
-        return category_id + 1
-    raise KeyError(category_id)
+def _ecdet_output_category_id(category_id: int, label_mode: str = "zero_based") -> int:
+    """Convert ECDet labels to RailBench's one-based category ids."""
+    return _to_railbench_category_id(category_id, label_mode)
 
 
 def _clamp_score(s: float) -> float:
@@ -886,7 +917,7 @@ def save_predictions_coco(
     gt_coco_path: Path | None,
     out_path: Path,
     score_threshold: float = 0.0,
-    category_id_offset: int | None = None,
+    prediction_label_mode: str = "one_based",
 ) -> Path:
     """
     Lädt ein COCO-artiges Prediction-JSON (Liste von Dicts) und speichert es im gewünschten
@@ -897,9 +928,8 @@ def save_predictions_coco(
                     Falls None oder nicht existent, wird der Image-Ordner aus config verwendet.
     - out_path: Ausgabepfad (z.B. OUTPUT_DIR / 'pred_test.json')
     - score_threshold: optional, nur Vorhersagen mit score >= threshold werden gespeichert
-    - category_id_offset: optionaler Offset fuer numerische Prediction-IDs.
-                          SAHI/Ultralytics liefert 0..6, RAIL-BENCH erwartet 1..7.
-                          None erkennt 0-basierte IDs automatisch.
+    - prediction_label_mode: erwartetes Label-Indexing im Prediction-JSON
+                             ('zero_based' oder 'one_based').
     """
     with open(pred_json_path, "r", encoding="utf-8") as f:
         pred_raw = json.load(f)
@@ -931,19 +961,7 @@ def save_predictions_coco(
     else:
         raise RuntimeError("Warning: could not resolve image dir from data config")
 
-    raw_category_ids = []
-    for pred in preds:
-        if not isinstance(pred, dict) or "category_id" not in pred:
-            continue
-        try:
-            raw_category_ids.append(int(pred["category_id"]))
-        except (TypeError, ValueError):
-            continue
-
-    if category_id_offset is None:
-        category_id_offset = 1 if raw_category_ids and min(raw_category_ids) == 0 else 0
-    if category_id_offset == 1:
-        print("Detected 0-based prediction category_ids. Mapping them to 1-based RAIL-BENCH category_ids.")
+    prediction_label_mode = _validate_label_mode(prediction_label_mode)
 
     results = []
     for p in preds:
@@ -999,7 +1017,7 @@ def save_predictions_coco(
         # final: falls noch nicht int, versuche zu casten
         cat_id = int(cat_id)
         if cat_id_is_numeric_prediction:
-            cat_id += category_id_offset
+            cat_id = _to_railbench_category_id(cat_id, prediction_label_mode)
 
         # bbox
         bbox = p.get("bbox") or p.get("box") or p.get("bounding_box")
@@ -1234,6 +1252,9 @@ def main():
     if MODEL_BACKEND not in {"yolo", "ecdet"}:
         raise ValueError(f"Unsupported MODEL_BACKEND: {MODEL_BACKEND}")
 
+    _validate_label_mode(YOLO_LABEL_INDEXING)
+    _validate_label_mode(ECDET_LABEL_INDEXING)
+
     if MODEL_BACKEND == "ecdet" and not ECDET_WANDB_ARTIFACT:
         raise ValueError("Set ECDET_WANDB_ARTIFACT to the W&B artifact path for the trained ECDet checkpoint.")
 
@@ -1283,12 +1304,17 @@ def main():
 
     try:
         pred_test_path = OUTPUT_DIR / "pred_test.json"
+        prediction_label_mode_for_export = "one_based"
+        if USE_SAHI and MODEL_BACKEND == "yolo":
+            # SAHI/Ultralytics JSON may preserve the model's raw class indexing.
+            prediction_label_mode_for_export = YOLO_LABEL_INDEXING
+
         save_predictions_coco(
             pred_json_path,
             gt_coco_path,
             pred_test_path,
             score_threshold=0.2,
-            category_id_offset=1 if USE_SAHI and MODEL_BACKEND == "yolo" else 0,
+            prediction_label_mode=prediction_label_mode_for_export,
         )
     except Exception as e:
         print(f"Warning: failed to write normalized pred_test.json: {e}")
