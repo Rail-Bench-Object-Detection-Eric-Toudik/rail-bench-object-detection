@@ -11,7 +11,7 @@ backbone:
   num_levels: 3
   patch_size: 16
   proj_dim: 256
-  skip_load_backbone: false
+  skip_load_backbone: true
   weights_path: ../models/EdgeCrafter/ecdetseg/ecvits/ecvitt.pth
 
 decoder:
