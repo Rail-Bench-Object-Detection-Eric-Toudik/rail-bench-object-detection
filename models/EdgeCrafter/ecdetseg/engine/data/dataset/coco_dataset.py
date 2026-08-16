@@ -169,7 +169,10 @@ class ConvertCocoPolysToMask(object):
             target["keypoints"] = keypoints
 
         # for conversion to coco api
-        area = torch.tensor([obj["area"] for obj in anno])
+        area = torch.tensor([
+            obj["area"] if "area" in obj else (obj["bbox"][2] * obj["bbox"][3])
+            for obj in anno
+        ], dtype=torch.float32)
         iscrowd = torch.tensor([obj["iscrowd"] if "iscrowd" in obj else 0 for obj in anno])
         target["area"] = area[keep]
         target["iscrowd"] = iscrowd[keep]
@@ -264,13 +267,13 @@ mscoco_category2name = {
 }
 
 custom_category2name = {
-    0: 'train',
-    1: 'catenary_pole',
-    2: 'signal_pole',
-    3: 'signal',
-    4: 'person',
-    5: 'road_vehicle',
-    6: 'bicycle',
+    1: 'train',
+    2: 'catenary_pole',
+    3: 'signal_pole',
+    4: 'signal',
+    5: 'person',
+    6: 'road_vehicle',
+    7: 'bicycle',
 }
 
 mscoco_category2label = {k: i for i, k in enumerate(custom_category2name.keys())}
