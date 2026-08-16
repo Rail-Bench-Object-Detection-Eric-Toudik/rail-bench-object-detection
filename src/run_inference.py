@@ -66,7 +66,7 @@ OVERLAP_WIDTH_RATIO = 0.3
 # Für reine Visualisierung wäre 0.25 sinnvoller.
 CONF_THRESHOLD = 0.001
 
-POSTPROCESS_MATCH_THRESHOLD = 0.5
+POSTPROCESS_MATCH_THRESHOLD = 0.3
 DEVICE = "cuda:0"  # oder "cpu"
 
 if USE_SAHI:
@@ -75,6 +75,7 @@ if USE_SAHI:
         f"{SLICE_WIDTH}x{SLICE_HEIGHT}_"
         f"conf{str(CONF_THRESHOLD).replace('.', '')}_"
         f"overlap{str(OVERLAP_WIDTH_RATIO).replace('.', '')}"
+        f"postprocess{str(POSTPROCESS_MATCH_THRESHOLD).replace('.', '')}"
     )
 else:
     RUN_NAME = (
