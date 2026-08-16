@@ -48,7 +48,7 @@ else:
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
     YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_keylpne9_model:v0"
     ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/jcaaxdfz_model:v0"
-
+# eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/jcaaxdfz_model:v0
 WANDB_ARTIFACT = ECDET_WANDB_ARTIFACT if MODEL_BACKEND == "ecdet" else YOLO_WANDB_ARTIFACT
 
 if MODEL_BACKEND == "yolo":
