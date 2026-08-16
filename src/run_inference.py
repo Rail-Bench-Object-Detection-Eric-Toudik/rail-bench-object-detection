@@ -1,6 +1,8 @@
+import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +20,87 @@ from src.calculate_railbench_benchmark import BenchmarkCalculator
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
+
+
+def build_run_name(
+    model_backend: str,
+    split: str,
+    use_sahi: bool,
+    slice_width: int,
+    slice_height: int,
+    confidence_threshold: float,
+    overlap_width_ratio: float,
+    postprocess_match_threshold: float,
+) -> str:
+    """Build a stable run name from the active inference settings."""
+    if use_sahi:
+        return (
+            f"{model_backend}_sahi_{split}_"
+            f"{slice_width}x{slice_height}_"
+            f"conf{str(confidence_threshold).replace('.', '')}_"
+            f"overlap{str(overlap_width_ratio).replace('.', '')}"
+            f"postprocess{str(postprocess_match_threshold).replace('.', '')}"
+        )
+
+    return (
+        f"{model_backend}_direct_{split}_"
+        f"conf{str(confidence_threshold).replace('.', '')}"
+    )
+
+
+def build_run_output_dir(output_root: Path, run_name: str) -> Path:
+    """Return the per-run output directory used to isolate concurrent jobs."""
+    return output_root / run_name
+
+
+def build_unique_run_name(base_run_name: str, run_id: str) -> str:
+    """Combine the stable base name with a unique run identifier."""
+    return f"{base_run_name}_{run_id}"
+
+
+def build_run_id(explicit_run_id: str | None = None, slurm_job_id: str | None = None) -> str:
+    """Build a unique run identifier for output isolation and experiment tracking."""
+    if explicit_run_id:
+        return explicit_run_id.strip().replace(" ", "_")
+
+    if slurm_job_id is None:
+        slurm_job_id = os.getenv("SLURM_JOB_ID")
+
+    if slurm_job_id:
+        return f"slurm{slurm_job_id}"
+
+    return datetime.now(timezone.utc).strftime("utc%Y%m%dT%H%M%SZ")
+
+
+def parse_args(
+    argv: list[str] | None = None,
+    *,
+    default_postprocess_match_threshold: float,
+    default_output_root: Path,
+) -> argparse.Namespace:
+    """Parse the runtime overrides for the inference entrypoint."""
+    parser = argparse.ArgumentParser(
+        prog="run_inference",
+        description="Run RailBench inference with configurable per-job overrides.",
+    )
+    parser.add_argument(
+        "--postprocess-match-threshold",
+        type=float,
+        default=default_postprocess_match_threshold,
+        help="NMS postprocess match threshold for SAHI runs.",
+    )
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=default_output_root,
+        help="Base output directory used to isolate run artifacts.",
+    )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Optional unique suffix for the run name. Falls back to SLURM_JOB_ID or a UTC timestamp.",
+    )
+    return parser.parse_args(argv)
 
 # ---------------------------------------------------------------------
 # Paths / Config
@@ -47,7 +130,7 @@ else:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
     YOLO_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_keylpne9_model:v0"
-    ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/jcaaxdfz_model:v0"
+    ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/a0avcjg2_model:v0"
 # eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/jcaaxdfz_model:v0
 WANDB_ARTIFACT = ECDET_WANDB_ARTIFACT if MODEL_BACKEND == "ecdet" else YOLO_WANDB_ARTIFACT
 
@@ -74,26 +157,24 @@ CONF_THRESHOLD = 0.001
 POSTPROCESS_MATCH_THRESHOLD = 0.3
 DEVICE = "cuda:0"  # oder "cpu"
 
-if USE_SAHI:
-    RUN_NAME = (
-        f"{MODEL_BACKEND}_sahi_{SPLIT}_"
-        f"{SLICE_WIDTH}x{SLICE_HEIGHT}_"
-        f"conf{str(CONF_THRESHOLD).replace('.', '')}_"
-        f"overlap{str(OVERLAP_WIDTH_RATIO).replace('.', '')}"
-        f"postprocess{str(POSTPROCESS_MATCH_THRESHOLD).replace('.', '')}"
-    )
-else:
-    RUN_NAME = (
-        f"{MODEL_BACKEND}_direct_{SPLIT}_"
-        f"conf{str(CONF_THRESHOLD).replace('.', '')}"
-    )
+RUN_NAME = build_run_name(
+    MODEL_BACKEND,
+    SPLIT,
+    USE_SAHI,
+    SLICE_WIDTH,
+    SLICE_HEIGHT,
+    CONF_THRESHOLD,
+    OVERLAP_WIDTH_RATIO,
+    POSTPROCESS_MATCH_THRESHOLD,
+)
+RUN_OUTPUT_DIR = build_run_output_dir(OUTPUT_DIR, RUN_NAME)
 
 
 def init_wandb_run() -> None:
     if wandb.run is not None:
         return
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    RUN_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     load_dotenv()
 
@@ -106,7 +187,7 @@ def init_wandb_run() -> None:
     wandb.init(
         project=WANDB_PROJECT,
         name=RUN_NAME,
-        dir=str(OUTPUT_DIR),
+        dir=str(RUN_OUTPUT_DIR),
         job_type="sahi_inference_eval",
         config={
             "split": SPLIT,
@@ -131,7 +212,7 @@ def download_model_from_wandb() -> Path:
 
     artifact = wandb.use_artifact(WANDB_ARTIFACT, type="model")
     artifact_name = WANDB_ARTIFACT.rsplit("/", 1)[-1].replace(":", "-")
-    artifact_dir = Path(artifact.download(root=OUTPUT_DIR / "artifacts" / artifact_name))
+    artifact_dir = Path(artifact.download(root=RUN_OUTPUT_DIR / "artifacts" / artifact_name))
 
     expected_model_file = "best.pth" if MODEL_BACKEND == "ecdet" else "best.pt"
     model_path = artifact_dir / expected_model_file
@@ -508,7 +589,7 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
             print(f"  Processed {count}/{len(image_paths)} images...")
     
     # Speichere Vorhersagen in COCO-Format
-    output_dir = OUTPUT_DIR / RUN_NAME
+    output_dir = RUN_OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
     
     result_path = output_dir / "result.json"
@@ -585,7 +666,7 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
             if count % 10 == 0:
                 print(f"  Processed {count}/{len(image_paths)} images...")
 
-    output_dir = OUTPUT_DIR / RUN_NAME
+    output_dir = RUN_OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
     result_path = output_dir / "result.json"
@@ -1246,8 +1327,32 @@ def evaluate_coco(gt_json_path: Path, pred_json_path: Path) -> dict:
 # Main
 # ---------------------------------------------------------------------
 
-def main():
+def main(argv: list[str] | None = None) -> None:
+    global OUTPUT_DIR, POSTPROCESS_MATCH_THRESHOLD, RUN_NAME, RUN_OUTPUT_DIR
+    args = parse_args(
+        argv,
+        default_postprocess_match_threshold=POSTPROCESS_MATCH_THRESHOLD,
+        default_output_root=OUTPUT_DIR,
+    )
+    OUTPUT_DIR = args.output_root
+    POSTPROCESS_MATCH_THRESHOLD = args.postprocess_match_threshold
+    run_id = build_run_id(args.run_id)
+    base_run_name = build_run_name(
+        MODEL_BACKEND,
+        SPLIT,
+        USE_SAHI,
+        SLICE_WIDTH,
+        SLICE_HEIGHT,
+        CONF_THRESHOLD,
+        OVERLAP_WIDTH_RATIO,
+        POSTPROCESS_MATCH_THRESHOLD,
+    )
+    RUN_NAME = build_unique_run_name(base_run_name, run_id)
+    RUN_OUTPUT_DIR = build_run_output_dir(OUTPUT_DIR, RUN_NAME)
+
     print(f"Run name: {RUN_NAME}")
+    print(f"Run id: {run_id}")
+    print(f"Output dir: {RUN_OUTPUT_DIR}")
     print(f"Using {MODEL_BACKEND} backend with {'SAHI' if USE_SAHI else 'direct'} inference method")
 
     if MODEL_BACKEND not in {"yolo", "ecdet"}:
@@ -1304,7 +1409,7 @@ def main():
     pred_test_path = None
 
     try:
-        pred_test_path = OUTPUT_DIR / "pred_test.json"
+        pred_test_path = RUN_OUTPUT_DIR / "pred_test.json"
         prediction_label_mode_for_export = "one_based"
         if USE_SAHI and MODEL_BACKEND == "yolo":
             # SAHI/Ultralytics JSON may preserve the model's raw class indexing.
@@ -1352,12 +1457,17 @@ def main():
 
     wandb.finish()
 
-    benchmark_calculator = BenchmarkCalculator(test_pipeline=TEST_PIPELINE)
+    benchmark_calculator = BenchmarkCalculator(
+        test_pipeline=TEST_PIPELINE,
+        project_root=PROJECT_ROOT,
+        gt_path=gt_coco_path,
+        pred_path=eval_pred_path,
+    )
     benchmark_calculator.run_railbench_format_check(is_railbench_test=False)
     benchmark_calculator.prepare_and_run_object_eval(
         split="val",
         detector_name=RUN_NAME,
-        project_name="eric-toudik-railbench",
+        project_name=RUN_NAME,
     )
 
 if __name__ == "__main__":

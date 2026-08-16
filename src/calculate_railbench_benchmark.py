@@ -15,15 +15,34 @@ import shutil
 
 
 class BenchmarkCalculator:
-    def __init__(self, test_pipeline, project_root=None):
+    """Wrap the RAIL-BENCH formatting and object evaluation steps."""
+
+    def __init__(
+        self,
+        test_pipeline: bool,
+        project_root: Path | None = None,
+        gt_path: Path | None = None,
+        pred_path: Path | None = None,
+    ):
         if project_root is None:
             self.project_root = Path(__file__).resolve().parents[1]
+        elif isinstance(project_root, Path):
+            self.project_root = project_root
+        else:
+            self.project_root = Path(project_root)
+
         if test_pipeline:
             self.gt_path = self.project_root / "data" / "pipeline_test" / "annotations_pipeline_test.json"
         else:
             self.gt_path = self.project_root / "data" /  "coco_annotations" / "objects" / "annotations_val.json"
 
+        if gt_path is not None:
+            self.gt_path = gt_path
+
         self.pred_path = self.project_root / "outputs" / "pred_test.json"
+        if pred_path is not None:
+            self.pred_path = pred_path
+
         self._check_paths()
 
 
