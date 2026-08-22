@@ -30,7 +30,7 @@ val_dataloader:
   dataset:
     type: CocoDetection
     img_folder: ../../../data/sahi/sliced_coco/val
-    ann_file: ../../../data/sahi/sliced_coco/val/val_sliced_coco.json
+    ann_file: ../../../data/sahi/sliced_coco/val/val_sliced_coco_1to7.json
     return_masks: False
     transforms:
       type: Compose
