@@ -25,6 +25,18 @@ from .ec_engine import evaluate, train_one_epoch
 
 class ECSolver(BaseSolver):
 
+    def _build_default_wandb_run_name(self, job_type: str) -> str:
+        """Build the default W&B run name from config metadata."""
+        config_name = f'{self.output_dir.name}.yml'
+        epochs = getattr(self.cfg, 'epochs', None)
+        resumed = 'resumed' if getattr(self.cfg, 'resume', None) or getattr(self.cfg, 'tuning', None) else 'fresh'
+
+        parts = [job_type, self.cfg.task, config_name]
+        if epochs is not None:
+            parts.append(f'{epochs}ep')
+        parts.append(resumed)
+        return '_'.join(parts)
+
     def _wandb_config(self, job_type: str) -> dict[str, object]:
         cfg = self.cfg
         config = {
@@ -64,13 +76,7 @@ class ECSolver(BaseSolver):
         project = getattr(self.cfg, 'wandb_project', None) or 'Rail-Bench-Object-Detection-EdgeCrafter'
         run_name = getattr(self.cfg, 'wandb_run_name', None)
         if run_name is None:
-            parts = [job_type, self.cfg.task, self.output_dir.name]
-            epochs = getattr(self.cfg, 'epochs', None)
-            if epochs is not None:
-                parts.append(f'{epochs}ep')
-            if getattr(self.cfg, 'resume', None):
-                parts.append('resume')
-            run_name = '_'.join(parts)
+            run_name = self._build_default_wandb_run_name(job_type)
 
         return wandb.init(
             project=project,
