@@ -25,6 +25,7 @@ if hasattr(sys.stdout, "reconfigure"):
 def build_run_name(
     model_backend: str,
     split: str,
+    use_hybrid: bool,
     use_sahi: bool,
     slice_width: int,
     slice_height: int,
@@ -33,6 +34,15 @@ def build_run_name(
     postprocess_match_threshold: float,
 ) -> str:
     """Build a stable run name from the active inference settings."""
+    if use_hybrid:
+        return (
+            f"{model_backend}_hybrid_{split}_"
+            f"{slice_width}x{slice_height}_"
+            f"conf{str(confidence_threshold).replace('.', '')}_"
+            f"overlap{str(overlap_width_ratio).replace('.', '')}"
+            f"postprocess{str(postprocess_match_threshold).replace('.', '')}"
+        )
+
     if use_sahi:
         return (
             f"{model_backend}_sahi_{split}_"
@@ -51,6 +61,11 @@ def build_run_name(
 def build_run_output_dir(output_root: Path, run_name: str) -> Path:
     """Return the per-run output directory used to isolate concurrent jobs."""
     return output_root / run_name
+
+
+def build_branch_output_dir(run_output_dir: Path, branch_name: str) -> Path:
+    """Return an isolated output directory for a specific inference branch."""
+    return run_output_dir / branch_name
 
 
 def build_unique_run_name(base_run_name: str, run_id: str) -> str:
@@ -96,6 +111,11 @@ def parse_args(
         help="Base output directory used to isolate run artifacts.",
     )
     parser.add_argument(
+        "--hybrid-inference",
+        action="store_true",
+        help="Run both direct and SAHI inference and merge the filtered results.",
+    )
+    parser.add_argument(
         "--run-id",
         default=None,
         help="Optional unique suffix for the run name. Falls back to SLURM_JOB_ID or a UTC timestamp.",
@@ -106,6 +126,7 @@ def parse_args(
 # Paths / Config
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
+USE_HYBRID = False
 USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
 MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
 ECDET_MODEL_NAME = "large"  # "small", "medium", "large", or "xlarge"
@@ -160,6 +181,7 @@ DEVICE = "cuda:0"  # oder "cpu"
 RUN_NAME = build_run_name(
     MODEL_BACKEND,
     SPLIT,
+    USE_HYBRID,
     USE_SAHI,
     SLICE_WIDTH,
     SLICE_HEIGHT,
@@ -191,6 +213,7 @@ def init_wandb_run() -> None:
         job_type="sahi_inference_eval",
         config={
             "split": SPLIT,
+            "inference_mode": "hybrid" if USE_HYBRID else ("sahi" if USE_SAHI else "direct"),
             "slice_height": SLICE_HEIGHT,
             "slice_width": SLICE_WIDTH,
             "overlap_height_ratio": OVERLAP_HEIGHT_RATIO,
@@ -512,7 +535,12 @@ def collect_image_paths(source_dir: Path) -> list[Path]:
     return image_paths
 
 
-def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> Path:
+def run_direct_predict(
+    model_path: Path,
+    source_dir: Path,
+    gt_coco_path: Path,
+    output_dir: Path | None = None,
+) -> Path:
     """
     Führt direkte Inference ohne SAHI durch und konvertiert die Ergebnisse in COCO-Format.
     
@@ -589,7 +617,9 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
             print(f"  Processed {count}/{len(image_paths)} images...")
     
     # Speichere Vorhersagen in COCO-Format
-    output_dir = RUN_OUTPUT_DIR
+    if output_dir is None:
+        output_dir = RUN_OUTPUT_DIR
+
     output_dir.mkdir(parents=True, exist_ok=True)
     
     result_path = output_dir / "result.json"
@@ -602,7 +632,12 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
     return result_path
 
 
-def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> Path:
+def run_direct_ecdet_predict(
+    model_path: Path,
+    source_dir: Path,
+    gt_coco_path: Path,
+    output_dir: Path | None = None,
+) -> Path:
     """
     Runs direct ECDet inference without SAHI and converts results to COCO format.
     """
@@ -666,7 +701,9 @@ def run_direct_ecdet_predict(model_path: Path, source_dir: Path, gt_coco_path: P
             if count % 10 == 0:
                 print(f"  Processed {count}/{len(image_paths)} images...")
 
-    output_dir = RUN_OUTPUT_DIR
+    if output_dir is None:
+        output_dir = RUN_OUTPUT_DIR
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
     result_path = output_dir / "result.json"
@@ -831,8 +868,19 @@ def _create_ecdet_sahi_detection_model(model_path: Path, load_at_init: bool = Tr
 # SAHI Prediction
 # ---------------------------------------------------------------------
 
-def run_sahi_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> Path:
+def run_sahi_predict(
+    model_path: Path,
+    source_dir: Path,
+    gt_coco_path: Path,
+    project_dir: Path | None = None,
+    run_name: str | None = None,
+) -> Path:
     from sahi.predict import predict
+
+    if project_dir is None:
+        project_dir = OUTPUT_DIR
+    if run_name is None:
+        run_name = RUN_NAME
 
     detection_model = None
     predict_kwargs = {
@@ -863,8 +911,8 @@ def run_sahi_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> 
 
         dataset_json_path=str(gt_coco_path),
 
-        project=str(OUTPUT_DIR),
-        name=RUN_NAME,
+        project=str(project_dir),
+        name=run_name,
 
         no_standard_prediction=True,
 
@@ -914,6 +962,114 @@ def run_sahi_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> 
 
     print(f"Using prediction JSON: {json_files[0]}")
     return json_files[0]
+
+
+def _load_prediction_entries(pred_json_path: Path) -> list[dict]:
+    with open(pred_json_path, "r", encoding="utf-8") as f:
+        pred_raw = json.load(f)
+
+    if isinstance(pred_raw, dict):
+        for key in ("predictions", "results", "images", "annotations", "detections"):
+            if key in pred_raw and isinstance(pred_raw[key], list):
+                return pred_raw[key]
+
+        list_vals = [value for value in pred_raw.values() if isinstance(value, list)]
+        return list_vals[0] if list_vals else []
+
+    if isinstance(pred_raw, list):
+        return pred_raw
+
+    raise ValueError(f"Unrecognized prediction JSON structure: {type(pred_raw)}")
+
+
+def merge_hybrid_predictions(
+    direct_predictions_path: Path,
+    sahi_predictions_path: Path,
+    out_path: Path,
+) -> Path:
+    """Merge direct train predictions with SAHI non-train predictions."""
+    direct_predictions = _load_prediction_entries(direct_predictions_path)
+    sahi_predictions = _load_prediction_entries(sahi_predictions_path)
+    train_category_id = CATEGORY_NAME_TO_ID["train"]
+
+    merged_predictions = [
+        prediction
+        for prediction in direct_predictions
+        if int(prediction.get("category_id", -1)) == train_category_id
+    ]
+    merged_predictions.extend(
+        prediction
+        for prediction in sahi_predictions
+        if int(prediction.get("category_id", -1)) != train_category_id
+    )
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(merged_predictions, f, ensure_ascii=False, indent=4)
+
+    print(f"Merged hybrid predictions written to: {out_path}")
+    print(
+        "Direct train predictions kept: "
+        f"{sum(1 for prediction in direct_predictions if int(prediction.get('category_id', -1)) == train_category_id)}"
+    )
+    print(
+        "SAHI non-train predictions kept: "
+        f"{sum(1 for prediction in sahi_predictions if int(prediction.get('category_id', -1)) != train_category_id)}"
+    )
+
+    return out_path
+
+
+def run_hybrid_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> Path:
+    """Run both inference branches and merge their filtered outputs."""
+    direct_output_dir = build_branch_output_dir(RUN_OUTPUT_DIR, "direct")
+    sahi_output_dir = build_branch_output_dir(RUN_OUTPUT_DIR, "sahi")
+
+    if MODEL_BACKEND == "ecdet":
+        direct_result_path = run_direct_ecdet_predict(
+            model_path=model_path,
+            source_dir=source_dir,
+            gt_coco_path=gt_coco_path,
+            output_dir=direct_output_dir,
+        )
+    else:
+        direct_result_path = run_direct_predict(
+            model_path=model_path,
+            source_dir=source_dir,
+            gt_coco_path=gt_coco_path,
+            output_dir=direct_output_dir,
+        )
+
+    sahi_result_path = run_sahi_predict(
+        model_path=model_path,
+        source_dir=source_dir,
+        gt_coco_path=gt_coco_path,
+        project_dir=RUN_OUTPUT_DIR,
+        run_name="sahi",
+    )
+
+    direct_predictions_path = save_predictions_coco(
+        direct_result_path,
+        gt_coco_path,
+        direct_output_dir / "pred_test.json",
+        score_threshold=0.2,
+        prediction_label_mode="one_based",
+    )
+
+    sahi_prediction_label_mode = YOLO_LABEL_INDEXING if MODEL_BACKEND == "yolo" else "one_based"
+    sahi_predictions_path = save_predictions_coco(
+        sahi_result_path,
+        gt_coco_path,
+        sahi_output_dir / "pred_test.json",
+        score_threshold=0.2,
+        prediction_label_mode=sahi_prediction_label_mode,
+    )
+
+    return merge_hybrid_predictions(
+        direct_predictions_path=direct_predictions_path,
+        sahi_predictions_path=sahi_predictions_path,
+        out_path=RUN_OUTPUT_DIR / "result.json",
+    )
 
 
 # ---------------------------------------------------------------------
@@ -1013,25 +1169,7 @@ def save_predictions_coco(
     - prediction_label_mode: erwartetes Label-Indexing im Prediction-JSON
                              ('zero_based' oder 'one_based').
     """
-    with open(pred_json_path, "r", encoding="utf-8") as f:
-        pred_raw = json.load(f)
-
-    # SAHI/COCO outputs are usually a list; falls ein dict geliefert wird, versuchen wir, die Liste zu extrahieren
-    # TODO can this be removed? (Not reuqired for direct at least)
-    if isinstance(pred_raw, dict):
-        # häufige keys: 'predictions', 'results', 'images', 'annotations'
-        for key in ("predictions", "results", "images", "annotations", "detections"):
-            if key in pred_raw and isinstance(pred_raw[key], list):
-                preds = pred_raw[key]
-                break
-        else:
-            # Fallback: suche Listeneinträge in der dict values
-            list_vals = [v for v in pred_raw.values() if isinstance(v, list)]
-            preds = list_vals[0] if list_vals else []
-    elif isinstance(pred_raw, list):
-        preds = pred_raw
-    else:
-        raise ValueError(f"Unrecognized prediction JSON structure: {type(pred_raw)}")
+    preds = _load_prediction_entries(pred_json_path)
 
     # Lade GT COCO, um image_id -> file_name zu mappen
     image_id_to_name = {}
@@ -1328,7 +1466,7 @@ def evaluate_coco(gt_json_path: Path, pred_json_path: Path) -> dict:
 # ---------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> None:
-    global OUTPUT_DIR, POSTPROCESS_MATCH_THRESHOLD, RUN_NAME, RUN_OUTPUT_DIR
+    global OUTPUT_DIR, POSTPROCESS_MATCH_THRESHOLD, RUN_NAME, RUN_OUTPUT_DIR, USE_HYBRID
     args = parse_args(
         argv,
         default_postprocess_match_threshold=POSTPROCESS_MATCH_THRESHOLD,
@@ -1336,10 +1474,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     OUTPUT_DIR = args.output_root
     POSTPROCESS_MATCH_THRESHOLD = args.postprocess_match_threshold
+    USE_HYBRID = args.hybrid_inference
     run_id = build_run_id(args.run_id)
     base_run_name = build_run_name(
         MODEL_BACKEND,
         SPLIT,
+        USE_HYBRID,
         USE_SAHI,
         SLICE_WIDTH,
         SLICE_HEIGHT,
@@ -1353,7 +1493,8 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Run name: {RUN_NAME}")
     print(f"Run id: {run_id}")
     print(f"Output dir: {RUN_OUTPUT_DIR}")
-    print(f"Using {MODEL_BACKEND} backend with {'SAHI' if USE_SAHI else 'direct'} inference method")
+    inference_mode = "hybrid" if USE_HYBRID else ("SAHI" if USE_SAHI else "direct")
+    print(f"Using {MODEL_BACKEND} backend with {inference_mode} inference method")
 
     if MODEL_BACKEND not in {"yolo", "ecdet"}:
         raise ValueError(f"Unsupported MODEL_BACKEND: {MODEL_BACKEND}")
@@ -1387,7 +1528,13 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Warning: Could not fix GT category IDs: {e}")
 
     # Wähle zwischen SAHI und direkter Inference
-    if USE_SAHI:
+    if USE_HYBRID:
+        pred_json_path = run_hybrid_predict(
+            model_path=model_path,
+            source_dir=source_dir,
+            gt_coco_path=gt_coco_path,
+        )
+    elif USE_SAHI:
         pred_json_path = run_sahi_predict(
             model_path=model_path,
             source_dir=source_dir,
@@ -1410,10 +1557,13 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         pred_test_path = RUN_OUTPUT_DIR / "pred_test.json"
-        prediction_label_mode_for_export = "one_based"
-        if USE_SAHI and MODEL_BACKEND == "yolo":
+        if USE_HYBRID:
+            prediction_label_mode_for_export = "one_based"
+        elif USE_SAHI and MODEL_BACKEND == "yolo":
             # SAHI/Ultralytics JSON may preserve the model's raw class indexing.
             prediction_label_mode_for_export = YOLO_LABEL_INDEXING
+        else:
+            prediction_label_mode_for_export = "one_based"
 
         save_predictions_coco(
             pred_json_path,
