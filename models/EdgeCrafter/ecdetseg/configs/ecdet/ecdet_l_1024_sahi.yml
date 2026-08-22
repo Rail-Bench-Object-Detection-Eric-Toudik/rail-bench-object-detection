@@ -69,9 +69,13 @@ train_dataloader:
       mosaic_epoch: 30
       mosaic_prob: 0.75
       stop_epoch: 90
+  total_batch_size: 8
+
 
   collate_fn:
     mixup_prob: 0.75
     mixup_epoch: 20
 
+val_dataloader:
+  total_batch_size: 8
 
