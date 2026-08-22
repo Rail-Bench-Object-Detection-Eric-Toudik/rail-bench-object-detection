@@ -29,7 +29,7 @@ class ECSolver(BaseSolver):
         """Build the default W&B run name from config metadata."""
         config_name = f'{self.output_dir.name}.yml'
         epochs = getattr(self.cfg, 'epochs', None)
-        resumed = 'resumed' if getattr(self.cfg, 'resume', None) or getattr(self.cfg, 'tuning', None) else 'fresh'
+        resumed = 'resumed' if getattr(self.cfg, 'resume', None) else 'fresh'
 
         parts = [job_type, self.cfg.task, config_name]
         if epochs is not None:
