@@ -70,3 +70,7 @@ train_dataloader:
     mixup_epoch: 20
 
 
+early_stopping:
+  enabled: True
+  patience: 7
+  min_delta: 0.0
