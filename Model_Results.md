@@ -1301,7 +1301,57 @@
 | 0.90 | 0.0242 | 0.0102 | 0.0020 | 0.0396 | 0.0285 | 0.0127 | 0.0082 |
 | 0.95 | 0.0062 | 0.0014 | 0.0000 | 0.0053 | 0.0103 | 0.0056 | 0.0082 |
 
-## Evaluation Results: EdgeCrafterL + Oversampling +  SAHI, EVAL With SAHI + postprocessing_match_threshold=0.5
+
+
+## Evaluation Results: EdgeCrafterL + Oversampling +  SAHI, EVAL With SAHI + postprocessing_match_threshold=0.5 
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.2726 |
+| AP50 | 0.5214 |
+| AP75 | 0.2457 |
+| APeasy | 0.4305 |
+| APmoderate | 0.3570 |
+| APhard | 0.2726 |
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.5663 |
+| ARmoderate | 0.4720 |
+| ARhard | 0.3742 |
+| AR1 | 0.1141 |
+| AR10 | 0.3165 |
+| AR100 | 0.3742 |
+| AR200 | 0.3742 |
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | signal | signal_pole | train | road_vehicle | person | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.7994 | 0.5791 | 0.4955 | 0.2870 | 0.4631 | 0.6527 | 0.3730 |
+| 0.55 | 0.7717 | 0.5447 | 0.4277 | 0.2500 | 0.4071 | 0.6175 | 0.3517 |
+| 0.60 | 0.7325 | 0.5056 | 0.3619 | 0.2101 | 0.3382 | 0.5591 | 0.3146 |
+| 0.65 | 0.6760 | 0.4545 | 0.2857 | 0.1721 | 0.2760 | 0.4936 | 0.2497 |
+| 0.70 | 0.6032 | 0.3973 | 0.2019 | 0.1358 | 0.2178 | 0.4242 | 0.1698 |
+| 0.75 | 0.5044 | 0.3439 | 0.1401 | 0.1046 | 0.1715 | 0.3307 | 0.1245 |
+| 0.80 | 0.3761 | 0.2739 | 0.0870 | 0.0851 | 0.1337 | 0.2286 | 0.1111 |
+| 0.85 | 0.2258 | 0.1854 | 0.0406 | 0.0559 | 0.0974 | 0.1289 | 0.0722 |
+| 0.90 | 0.0869 | 0.1012 | 0.0142 | 0.0367 | 0.0541 | 0.0635 | 0.0160 |
+| 0.95 | 0.0166 | 0.0145 | 0.0020 | 0.0125 | 0.0144 | 0.0192 | 0.0075 |
+
+
+
+
+
+
+
+
+
+
+
+
+## Evaluation Results: EdgeCrafterL + Oversampling , EVAL With SAHI + postprocessing_match_threshold=0.5
 ### Overall AP Metrics
 
 | Metric | Value |
@@ -1338,7 +1388,7 @@
 | 0.90 | 0.0768 | 0.0920 | 0.0149 | 0.0143 | 0.0418 | 0.0505 | 0.0188 |
 | 0.95 | 0.0121 | 0.0194 | 0.0099 | 0.0027 | 0.0082 | 0.0111 | 0.0074 |
 
-## Evaluation Results: EdgeCrafterL + Oversampling +  SAHI, EVAL With SAHI + postprocessing_match_threshold=0.3
+## Evaluation Results: EdgeCrafterL + Oversampling , EVAL With SAHI + postprocessing_match_threshold=0.3
 ### Overall AP Metrics
 
 | Metric | Value |
@@ -1376,7 +1426,7 @@
 | 0.95 |        0.0120 | 0.0195 | 0.0099 | 0.0027 | 0.0088 | 0.0110 | 0.0081 |
 
 
-## Evaluation Results: EdgeCrafterL + Oversampling +  SAHI, EVAL With SAHI + postprocessing_match_threshold=0.7
+## Evaluation Results: EdgeCrafterL + Oversampling , EVAL With SAHI + postprocessing_match_threshold=0.7
 ### Overall AP Metrics
 
 | Metric | Value |
@@ -1414,7 +1464,7 @@
 | 0.95 | 0.0123 | 0.0200 | 0.0099 | 0.0027 | 0.0089 | 0.0112 | 0.0065 |
 
 
-## Evaluation Results: EdgeCrafterL + Oversampling +  SAHI, EVAL With SAHI + postprocessing_match_threshold=0.9
+## Evaluation Results: EdgeCrafterL + Oversampling , EVAL With SAHI + postprocessing_match_threshold=0.9
 ### Overall AP Metrics
 
 | Metric | Value |
@@ -1452,7 +1502,7 @@
 | 0.95 | 0.0127 | 0.0199 | 0.0099 | 0.0024 | 0.0096 | 0.0116 | 0.0051 |
 
 
-## Evaluation Results: EdgeCrafterL + Oversampling +  SAHI, EVAL With SAHI + postprocessing_match_threshold=0.7, GREEDYNNM
+## Evaluation Results: EdgeCrafterL + Oversampling , EVAL With SAHI + postprocessing_match_threshold=0.7, GREEDYNNM
 ### Overall AP Metrics
 
 | Metric | Value |
