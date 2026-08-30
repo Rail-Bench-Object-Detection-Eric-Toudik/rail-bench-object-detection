@@ -110,12 +110,23 @@ def build_run_id(explicit_run_id: str | None = None, slurm_job_id: str | None = 
     return datetime.now(timezone.utc).strftime("utc%Y%m%dT%H%M%SZ")
 
 
+def _parse_bool(value: str) -> bool:
+    """Parse an explicit true or false command-line value."""
+    normalized_value = value.lower()
+    if normalized_value == "true":
+        return True
+    if normalized_value == "false":
+        return False
+    raise argparse.ArgumentTypeError("expected 'true' or 'false'")
+
+
 def parse_args(
     argv: list[str] | None = None,
     *,
     default_postprocess_match_threshold: float,
     default_output_root: Path,
     default_ecdet_config_path: Path,
+    default_use_sahi: bool,
 ) -> argparse.Namespace:
     """Parse the runtime overrides for the inference entrypoint."""
     parser = argparse.ArgumentParser(
@@ -146,6 +157,13 @@ def parse_args(
         help="Run both direct and SAHI inference and merge the filtered results.",
     )
     parser.add_argument(
+        "--use-sahi",
+        type=_parse_bool,
+        default=default_use_sahi,
+        metavar="{true,false}",
+        help="Use SAHI inference when --hybrid-inference is not set. Defaults to true.",
+    )
+    parser.add_argument(
         "--direct-wandb-artifact",
         default=None,
         help="Optional W&B model artifact for the direct branch. Defaults to the configured model artifact.",
@@ -167,7 +185,7 @@ def parse_args(
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
 USE_HYBRID = False
-USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
+USE_SAHI = True
 MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
 ECDET_CHECKPOINT_SOURCE = "wandb"  # "wandb" or "local"
 DIRECT_WANDB_ARTIFACT = None
@@ -1530,17 +1548,19 @@ def evaluate_coco(gt_json_path: Path, pred_json_path: Path) -> dict:
 # ---------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> None:
-    global ECDET_CONFIG_PATH, OUTPUT_DIR, POSTPROCESS_MATCH_THRESHOLD, RUN_NAME, RUN_OUTPUT_DIR, USE_HYBRID, DIRECT_WANDB_ARTIFACT, SAHI_WANDB_ARTIFACT
+    global ECDET_CONFIG_PATH, OUTPUT_DIR, POSTPROCESS_MATCH_THRESHOLD, RUN_NAME, RUN_OUTPUT_DIR, USE_HYBRID, USE_SAHI, DIRECT_WANDB_ARTIFACT, SAHI_WANDB_ARTIFACT
     args = parse_args(
         argv,
         default_postprocess_match_threshold=POSTPROCESS_MATCH_THRESHOLD,
         default_output_root=OUTPUT_DIR,
         default_ecdet_config_path=ECDET_CONFIG_PATH,
+        default_use_sahi=USE_SAHI,
     )
     OUTPUT_DIR = args.output_root
     ECDET_CONFIG_PATH = args.ecdet_config_path
     POSTPROCESS_MATCH_THRESHOLD = args.postprocess_match_threshold
     USE_HYBRID = args.hybrid_inference
+    USE_SAHI = args.use_sahi
     DIRECT_WANDB_ARTIFACT = args.direct_wandb_artifact
     SAHI_WANDB_ARTIFACT = args.sahi_wandb_artifact
     run_id = build_run_id(args.run_id)
