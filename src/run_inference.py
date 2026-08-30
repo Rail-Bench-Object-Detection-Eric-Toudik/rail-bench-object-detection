@@ -73,6 +73,29 @@ def build_unique_run_name(base_run_name: str, run_id: str) -> str:
     return f"{base_run_name}_{run_id}"
 
 
+def _artifact_run_tag(artifact_path: str) -> str:
+    """Build a short, filesystem-safe tag from a W&B artifact path."""
+    artifact_name = artifact_path.rsplit("/", 1)[-1].replace(":", "-")
+    safe_tag = "".join(character if character.isalnum() or character in {"-", "_"} else "_" for character in artifact_name)
+    return safe_tag.strip("-_")[:24] or "artifact"
+
+
+def build_artifact_run_suffix(
+    direct_wandb_artifact: str | None,
+    sahi_wandb_artifact: str | None,
+) -> str:
+    """Build a compact suffix that distinguishes runs using different model artifacts."""
+    suffix_parts: list[str] = []
+
+    if direct_wandb_artifact and direct_wandb_artifact != WANDB_ARTIFACT:
+        suffix_parts.append(f"direct_{_artifact_run_tag(direct_wandb_artifact)}")
+
+    if sahi_wandb_artifact and sahi_wandb_artifact != WANDB_ARTIFACT and sahi_wandb_artifact != direct_wandb_artifact:
+        suffix_parts.append(f"sahi_{_artifact_run_tag(sahi_wandb_artifact)}")
+
+    return "_".join(suffix_parts)
+
+
 def build_run_id(explicit_run_id: str | None = None, slurm_job_id: str | None = None) -> str:
     """Build a unique run identifier for output isolation and experiment tracking."""
     if explicit_run_id:
@@ -116,6 +139,16 @@ def parse_args(
         help="Run both direct and SAHI inference and merge the filtered results.",
     )
     parser.add_argument(
+        "--direct-wandb-artifact",
+        default=None,
+        help="Optional W&B model artifact for the direct branch. Defaults to the configured model artifact.",
+    )
+    parser.add_argument(
+        "--sahi-wandb-artifact",
+        default=None,
+        help="Optional W&B model artifact for the SAHI branch. Defaults to the configured model artifact.",
+    )
+    parser.add_argument(
         "--run-id",
         default=None,
         help="Optional unique suffix for the run name. Falls back to SLURM_JOB_ID or a UTC timestamp.",
@@ -131,6 +164,8 @@ USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
 MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
 ECDET_MODEL_NAME = "large"  # "small", "medium", "large", or "xlarge"
 ECDET_CHECKPOINT_SOURCE = "wandb"  # "wandb" or "local"
+DIRECT_WANDB_ARTIFACT = None
+SAHI_WANDB_ARTIFACT = None
 # Manual label indexing per backend (no auto-detection).
 # - "zero_based": model outputs 0..6
 # - "one_based": model outputs 1..7
@@ -222,6 +257,8 @@ def init_wandb_run() -> None:
             "postprocess_match_threshold": POSTPROCESS_MATCH_THRESHOLD,
             "device": DEVICE,
             "wandb_artifact": WANDB_ARTIFACT,
+            "direct_wandb_artifact": DIRECT_WANDB_ARTIFACT or WANDB_ARTIFACT,
+            "sahi_wandb_artifact": SAHI_WANDB_ARTIFACT or WANDB_ARTIFACT,
             "model_backend": MODEL_BACKEND,
             "ecdet_model": ECDET_MODEL_NAME if MODEL_BACKEND == "ecdet" else None,
             "yolo_label_indexing": YOLO_LABEL_INDEXING,
@@ -230,11 +267,12 @@ def init_wandb_run() -> None:
     )
 
 
-def download_model_from_wandb() -> Path:
+def download_model_from_wandb(wandb_artifact: str | None = None) -> Path:
     init_wandb_run()
 
-    artifact = wandb.use_artifact(WANDB_ARTIFACT, type="model")
-    artifact_name = WANDB_ARTIFACT.rsplit("/", 1)[-1].replace(":", "-")
+    resolved_artifact = wandb_artifact or WANDB_ARTIFACT
+    artifact = wandb.use_artifact(resolved_artifact, type="model")
+    artifact_name = resolved_artifact.rsplit("/", 1)[-1].replace(":", "-")
     artifact_dir = Path(artifact.download(root=RUN_OUTPUT_DIR / "artifacts" / artifact_name))
 
     expected_model_file = "best.pth" if MODEL_BACKEND == "ecdet" else "best.pt"
@@ -250,10 +288,10 @@ def download_model_from_wandb() -> Path:
     return model_path
 
 
-def resolve_ecdet_checkpoint_path() -> Path:
+def resolve_ecdet_checkpoint_path(wandb_artifact: str | None = None) -> Path:
     """Resolve the ECDet checkpoint from W&B or from a local file."""
     if ECDET_CHECKPOINT_SOURCE == "wandb":
-        return download_model_from_wandb()
+        return download_model_from_wandb(wandb_artifact)
 
     if ECDET_CHECKPOINT_SOURCE == "local":
         if not ECDET_LOCAL_CHECKPOINT_PATH.exists():
@@ -268,6 +306,14 @@ def resolve_ecdet_checkpoint_path() -> Path:
         "Unsupported ECDET_CHECKPOINT_SOURCE value: "
         f"{ECDET_CHECKPOINT_SOURCE!r}. Expected 'wandb' or 'local'."
     )
+
+
+def resolve_model_path(wandb_artifact: str | None = None) -> Path:
+    """Resolve the active checkpoint for the configured backend."""
+    if MODEL_BACKEND == "ecdet":
+        return resolve_ecdet_checkpoint_path(wandb_artifact)
+
+    return download_model_from_wandb(wandb_artifact)
 
 
 def print_yolo_model_information(model_path: Path) -> None:
@@ -1020,28 +1066,33 @@ def merge_hybrid_predictions(
     return out_path
 
 
-def run_hybrid_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> Path:
+def run_hybrid_predict(
+    direct_model_path: Path,
+    sahi_model_path: Path,
+    source_dir: Path,
+    gt_coco_path: Path,
+) -> Path:
     """Run both inference branches and merge their filtered outputs."""
     direct_output_dir = build_branch_output_dir(RUN_OUTPUT_DIR, "direct")
     sahi_output_dir = build_branch_output_dir(RUN_OUTPUT_DIR, "sahi")
 
     if MODEL_BACKEND == "ecdet":
         direct_result_path = run_direct_ecdet_predict(
-            model_path=model_path,
+            model_path=direct_model_path,
             source_dir=source_dir,
             gt_coco_path=gt_coco_path,
             output_dir=direct_output_dir,
         )
     else:
         direct_result_path = run_direct_predict(
-            model_path=model_path,
+            model_path=direct_model_path,
             source_dir=source_dir,
             gt_coco_path=gt_coco_path,
             output_dir=direct_output_dir,
         )
 
     sahi_result_path = run_sahi_predict(
-        model_path=model_path,
+        model_path=sahi_model_path,
         source_dir=source_dir,
         gt_coco_path=gt_coco_path,
         project_dir=RUN_OUTPUT_DIR,
@@ -1070,6 +1121,20 @@ def run_hybrid_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
         sahi_predictions_path=sahi_predictions_path,
         out_path=RUN_OUTPUT_DIR / "result.json",
     )
+
+
+def resolve_hybrid_model_paths() -> tuple[Path, Path]:
+    """Resolve the direct and SAHI checkpoints for the current run."""
+    direct_artifact = DIRECT_WANDB_ARTIFACT or WANDB_ARTIFACT
+    sahi_artifact = SAHI_WANDB_ARTIFACT or WANDB_ARTIFACT
+
+    direct_model_path = resolve_model_path(direct_artifact)
+    if sahi_artifact == direct_artifact:
+        sahi_model_path = direct_model_path
+    else:
+        sahi_model_path = resolve_model_path(sahi_artifact)
+
+    return direct_model_path, sahi_model_path
 
 
 # ---------------------------------------------------------------------
@@ -1466,7 +1531,7 @@ def evaluate_coco(gt_json_path: Path, pred_json_path: Path) -> dict:
 # ---------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> None:
-    global OUTPUT_DIR, POSTPROCESS_MATCH_THRESHOLD, RUN_NAME, RUN_OUTPUT_DIR, USE_HYBRID
+    global OUTPUT_DIR, POSTPROCESS_MATCH_THRESHOLD, RUN_NAME, RUN_OUTPUT_DIR, USE_HYBRID, DIRECT_WANDB_ARTIFACT, SAHI_WANDB_ARTIFACT
     args = parse_args(
         argv,
         default_postprocess_match_threshold=POSTPROCESS_MATCH_THRESHOLD,
@@ -1475,6 +1540,8 @@ def main(argv: list[str] | None = None) -> None:
     OUTPUT_DIR = args.output_root
     POSTPROCESS_MATCH_THRESHOLD = args.postprocess_match_threshold
     USE_HYBRID = args.hybrid_inference
+    DIRECT_WANDB_ARTIFACT = args.direct_wandb_artifact
+    SAHI_WANDB_ARTIFACT = args.sahi_wandb_artifact
     run_id = build_run_id(args.run_id)
     base_run_name = build_run_name(
         MODEL_BACKEND,
@@ -1487,6 +1554,9 @@ def main(argv: list[str] | None = None) -> None:
         OVERLAP_WIDTH_RATIO,
         POSTPROCESS_MATCH_THRESHOLD,
     )
+    artifact_run_suffix = build_artifact_run_suffix(DIRECT_WANDB_ARTIFACT, SAHI_WANDB_ARTIFACT)
+    if artifact_run_suffix:
+        base_run_name = f"{base_run_name}_{artifact_run_suffix}"
     RUN_NAME = build_unique_run_name(base_run_name, run_id)
     RUN_OUTPUT_DIR = build_run_output_dir(OUTPUT_DIR, RUN_NAME)
 
@@ -1495,6 +1565,8 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Output dir: {RUN_OUTPUT_DIR}")
     inference_mode = "hybrid" if USE_HYBRID else ("SAHI" if USE_SAHI else "direct")
     print(f"Using {MODEL_BACKEND} backend with {inference_mode} inference method")
+    print(f"Direct W&B artifact: {DIRECT_WANDB_ARTIFACT or WANDB_ARTIFACT}")
+    print(f"SAHI W&B artifact: {SAHI_WANDB_ARTIFACT or WANDB_ARTIFACT}")
 
     if MODEL_BACKEND not in {"yolo", "ecdet"}:
         raise ValueError(f"Unsupported MODEL_BACKEND: {MODEL_BACKEND}")
@@ -1506,12 +1578,26 @@ def main(argv: list[str] | None = None) -> None:
         raise ValueError("Set ECDET_WANDB_ARTIFACT to the W&B artifact path for the trained ECDet checkpoint.")
 
     if MODEL_BACKEND == "ecdet":
-        model_path = resolve_ecdet_checkpoint_path()
+        if USE_HYBRID:
+            direct_model_path, sahi_model_path = resolve_hybrid_model_paths()
+        elif USE_SAHI:
+            sahi_model_path = resolve_ecdet_checkpoint_path(SAHI_WANDB_ARTIFACT)
+            direct_model_path = sahi_model_path
+        else:
+            direct_model_path = resolve_ecdet_checkpoint_path(DIRECT_WANDB_ARTIFACT)
+            sahi_model_path = direct_model_path
     else:
-        model_path = download_model_from_wandb()
+        if USE_HYBRID:
+            direct_model_path, sahi_model_path = resolve_hybrid_model_paths()
+        elif USE_SAHI:
+            sahi_model_path = resolve_model_path(SAHI_WANDB_ARTIFACT)
+            direct_model_path = sahi_model_path
+        else:
+            direct_model_path = resolve_model_path(DIRECT_WANDB_ARTIFACT)
+            sahi_model_path = direct_model_path
 
     if MODEL_BACKEND == "yolo":
-        print_yolo_model_information(model_path)
+        print_yolo_model_information(sahi_model_path if USE_SAHI else direct_model_path)
 
     source_dir = resolve_split_image_dir(DATA_CONFIG_PATH, SPLIT)
     gt_coco_path = DEFAULT_GT_COCO_PATH
@@ -1530,25 +1616,26 @@ def main(argv: list[str] | None = None) -> None:
     # Wähle zwischen SAHI und direkter Inference
     if USE_HYBRID:
         pred_json_path = run_hybrid_predict(
-            model_path=model_path,
+            direct_model_path=direct_model_path,
+            sahi_model_path=sahi_model_path,
             source_dir=source_dir,
             gt_coco_path=gt_coco_path,
         )
     elif USE_SAHI:
         pred_json_path = run_sahi_predict(
-            model_path=model_path,
+            model_path=sahi_model_path,
             source_dir=source_dir,
             gt_coco_path=gt_coco_path,
         )
     elif MODEL_BACKEND == "ecdet":
         pred_json_path = run_direct_ecdet_predict(
-            model_path=model_path,
+            model_path=direct_model_path,
             source_dir=source_dir,
             gt_coco_path=gt_coco_path,
         )
     else:
         pred_json_path = run_direct_predict(
-            model_path=model_path,
+            model_path=direct_model_path,
             source_dir=source_dir,
             gt_coco_path=gt_coco_path,
         )
