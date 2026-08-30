@@ -115,6 +115,7 @@ def parse_args(
     *,
     default_postprocess_match_threshold: float,
     default_output_root: Path,
+    default_ecdet_config_path: Path,
 ) -> argparse.Namespace:
     """Parse the runtime overrides for the inference entrypoint."""
     parser = argparse.ArgumentParser(
@@ -132,6 +133,12 @@ def parse_args(
         type=Path,
         default=default_output_root,
         help="Base output directory used to isolate run artifacts.",
+    )
+    parser.add_argument(
+        "--ecdet-config-path",
+        type=Path,
+        default=default_ecdet_config_path,
+        help="ECDet model configuration file.",
     )
     parser.add_argument(
         "--hybrid-inference",
@@ -162,7 +169,6 @@ TEST_PIPELINE = False
 USE_HYBRID = False
 USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
 MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
-ECDET_MODEL_NAME = "large"  # "small", "medium", "large", or "xlarge"
 ECDET_CHECKPOINT_SOURCE = "wandb"  # "wandb" or "local"
 DIRECT_WANDB_ARTIFACT = None
 SAHI_WANDB_ARTIFACT = None
@@ -174,6 +180,7 @@ ECDET_LABEL_INDEXING = "one_based"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
+ECDET_CONFIG_PATH = PROJECT_ROOT / "config" / "ecdet_large_config.yaml"
 ECDET_LOCAL_CHECKPOINT_PATH = PROJECT_ROOT / "models" / "EdgeCrafter" / "ecdetseg" / "outputs" / "ecdet_m" / "best.pth"
 
 if TEST_PIPELINE:
@@ -260,7 +267,7 @@ def init_wandb_run() -> None:
             "direct_wandb_artifact": DIRECT_WANDB_ARTIFACT or WANDB_ARTIFACT,
             "sahi_wandb_artifact": SAHI_WANDB_ARTIFACT or WANDB_ARTIFACT,
             "model_backend": MODEL_BACKEND,
-            "ecdet_model": ECDET_MODEL_NAME if MODEL_BACKEND == "ecdet" else None,
+            "ecdet_config_path": str(ECDET_CONFIG_PATH) if MODEL_BACKEND == "ecdet" else None,
             "yolo_label_indexing": YOLO_LABEL_INDEXING,
             "ecdet_label_indexing": ECDET_LABEL_INDEXING,
         },
@@ -766,20 +773,13 @@ def _load_ecdet_model(model_path: Path, device: torch.device | None = None) -> t
     """Load ECDet with the same preprocessing and category remapping used for direct inference."""
     from src import ecdet as ecdet_module
 
-    ecdet_model = {
-        "small": ecdet_module.ECDetModel.SMALL,
-        "medium": ecdet_module.ECDetModel.MEDIUM,
-        "large": ecdet_module.ECDetModel.LARGE,
-        "xlarge": ecdet_module.ECDetModel.XLARGE,
-    }[ECDET_MODEL_NAME]
-
     if device is None:
         device = torch.device(DEVICE if torch.cuda.is_available() or not DEVICE.startswith("cuda") else "cpu")
 
     original_read_config = ecdet_module.read_config
 
-    def read_ecdet_config(config_path: str) -> dict:
-        config = original_read_config(config_path)
+    def read_ecdet_config(_config_path: str) -> dict:
+        config = original_read_config(str(ECDET_CONFIG_PATH))
         use_encoder_idx = config["encoder"]["use_encoder_idx"]
         config["encoder"]["use_encoder_idx"] = [
             encoder_idx for encoder_idx in use_encoder_idx if encoder_idx is not None
@@ -790,7 +790,6 @@ def _load_ecdet_model(model_path: Path, device: torch.device | None = None) -> t
     try:
         model = ecdet_module.get_model(
             str(model_path),
-            model_size=ecdet_model,
             map_location=str(device),
         ).to(device)
     finally:
@@ -810,7 +809,7 @@ def _load_ecdet_model(model_path: Path, device: torch.device | None = None) -> t
         ),
     ])
 
-    return model, device, transform, ecdet_model.value
+    return model, device, transform, ECDET_CONFIG_PATH.stem
 
 
 def _create_ecdet_sahi_detection_model(model_path: Path, load_at_init: bool = True) -> object:
@@ -1531,13 +1530,15 @@ def evaluate_coco(gt_json_path: Path, pred_json_path: Path) -> dict:
 # ---------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> None:
-    global OUTPUT_DIR, POSTPROCESS_MATCH_THRESHOLD, RUN_NAME, RUN_OUTPUT_DIR, USE_HYBRID, DIRECT_WANDB_ARTIFACT, SAHI_WANDB_ARTIFACT
+    global ECDET_CONFIG_PATH, OUTPUT_DIR, POSTPROCESS_MATCH_THRESHOLD, RUN_NAME, RUN_OUTPUT_DIR, USE_HYBRID, DIRECT_WANDB_ARTIFACT, SAHI_WANDB_ARTIFACT
     args = parse_args(
         argv,
         default_postprocess_match_threshold=POSTPROCESS_MATCH_THRESHOLD,
         default_output_root=OUTPUT_DIR,
+        default_ecdet_config_path=ECDET_CONFIG_PATH,
     )
     OUTPUT_DIR = args.output_root
+    ECDET_CONFIG_PATH = args.ecdet_config_path
     POSTPROCESS_MATCH_THRESHOLD = args.postprocess_match_threshold
     USE_HYBRID = args.hybrid_inference
     DIRECT_WANDB_ARTIFACT = args.direct_wandb_artifact
