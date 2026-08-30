@@ -1254,14 +1254,49 @@
 | 0.95 | 0.0067 | 0.0048 | 0.0006 | 0.0065 | 0.0063 | 0.0132 | 0.0110 |
 
 
+# Edgecrafter L - NO SAHI (inference and training)
+eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/79l7jzs8_model:v0
+## Evaluation Results: EdgeCrafterL + Oversampling  (NO SAHI!)
 
+| Metric | Value |
+|---|---:|
+| AP | 0.1983 |
+| AP50 | 0.3916 |
+| AP75 | 0.1706 |
+| APeasy | 0.3662 |
+| APmoderate | 0.2718 |
+| APhard | 0.1983 |
+### Recall Metrics
 
-# Edgecrafter - Large
+| Metric | Value |
+|---|---:|
+| AReasy | 0.4636 |
+| ARmoderate | 0.3506 |
+| ARhard | 0.2594 |
+| AR1 | 0.1034 |
+| AR10 | 0.2205 |
+| AR100 | 0.2588 |
+| AR200 | 0.2594 |
+### AP by Class per IoU Threshold
+
+| IoU | catenary_pole | person | signal_pole | signal | train | road_vehicle | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.4432 | 0.5051 | 0.2007 | 0.3483 | 0.5299 | 0.4636 | 0.2504 |
+| 0.55 | 0.4125 | 0.4503 | 0.1657 | 0.3251 | 0.5037 | 0.4210 | 0.2246 |
+| 0.60 | 0.3729 | 0.3872 | 0.1304 | 0.2928 | 0.4695 | 0.3775 | 0.1782 |
+| 0.65 | 0.3285 | 0.3202 | 0.0960 | 0.2527 | 0.4188 | 0.3199 | 0.1440 |
+| 0.70 | 0.2755 | 0.2347 | 0.0629 | 0.2194 | 0.3647 | 0.2473 | 0.1071 |
+| 0.75 | 0.2184 | 0.1666 | 0.0382 | 0.1873 | 0.3321 | 0.1883 | 0.0630 |
+| 0.80 | 0.1553 | 0.0916 | 0.0225 | 0.1414 | 0.2771 | 0.1318 | 0.0322 |
+| 0.85 | 0.0942 | 0.0520 | 0.0100 | 0.0990 | 0.2359 | 0.0866 | 0.0230 |
+| 0.90 | 0.0375 | 0.0222 | 0.0031 | 0.0404 | 0.1381 | 0.0419 | 0.0052 |
+| 0.95 | 0.0112 | 0.0060 | 0.0007 | 0.0048 | 0.0621 | 0.0121 | 0.0035 |
+# Edgecrafter - Large SAHI
 ## Config (#tbd)
 - Both trained with sahi
+eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/upva347y_model:v0
 
-
-## Evaluation Results: EdgeCrafter Direct Inference
+## Evaluation Results: EdgeCrafter Direct Inference 
 
 ### Overall AP Metrics
 
