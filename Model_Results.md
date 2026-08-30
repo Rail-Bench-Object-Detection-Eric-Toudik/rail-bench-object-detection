@@ -1573,3 +1573,46 @@ eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/upva347y_model:v0
 | 0.85 | 0.0214 | 0.2170 | 0.0275 | 0.0963 | 0.0490 | 0.0989 | 0.0721 |
 | 0.90 | 0.0109 | 0.0915 | 0.0139 | 0.0409 | 0.0179 | 0.0414 | 0.0293 |
 | 0.95 | 0.0021 | 0.0144 | 0.0099 | 0.0048 | 0.0034 | 0.0075 | 0.0111 |
+
+
+
+# Hybrid Approach - Large EdgeCrafter Model with and without SAHI
+- Direct:  eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/79l7jzs8_model:v0
+- SAHI: ric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/upva347y_model:v0
+- Mergin strategy:
+ - Both models predict all, but we keep only "trains" from direct and everything except trains from the SAHI model
+### Overall AP Metrics
+
+| Metric | Value |
+|---|---:|
+| AP | 0.2968 |
+| AP50 | 0.5429 |
+| AP75 | 0.2773 |
+| APeasy | 0.4765 |
+| APmoderate | 0.3885 |
+| APhard | 0.2968 |
+### Recall Metrics
+
+| Metric | Value |
+|---|---:|
+| AReasy | 0.5782 |
+| ARmoderate | 0.4720 |
+| ARhard | 0.3691 |
+| AR1 | 0.1292 |
+| AR10 | 0.3233 |
+| AR100 | 0.3691 |
+| AR200 | 0.3691 |
+### AP by Class per IoU Threshold
+
+| IoU | train | catenary_pole | signal | signal_pole | road_vehicle | person | bicycle |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.50 | 0.5299 | 0.8010 | 0.5729 | 0.4922 | 0.4071 | 0.6293 | 0.3682 |
+| 0.55 | 0.5037 | 0.7716 | 0.5390 | 0.4278 | 0.3597 | 0.5959 | 0.3564 |
+| 0.60 | 0.4695 | 0.7323 | 0.5002 | 0.3615 | 0.3053 | 0.5443 | 0.3061 |
+| 0.65 | 0.4188 | 0.6796 | 0.4522 | 0.2847 | 0.2554 | 0.4844 | 0.2380 |
+| 0.70 | 0.3647 | 0.6104 | 0.3956 | 0.2028 | 0.2054 | 0.4152 | 0.1641 |
+| 0.75 | 0.3321 | 0.5101 | 0.3442 | 0.1405 | 0.1638 | 0.3271 | 0.1232 |
+| 0.80 | 0.2771 | 0.3796 | 0.2757 | 0.0872 | 0.1307 | 0.2253 | 0.1092 |
+| 0.85 | 0.2359 | 0.2277 | 0.1865 | 0.0407 | 0.0956 | 0.1304 | 0.0731 |
+| 0.90 | 0.1381 | 0.0879 | 0.1018 | 0.0142 | 0.0524 | 0.0635 | 0.0164 |
+| 0.95 | 0.0621 | 0.0167 | 0.0145 | 0.0020 | 0.0148 | 0.0196 | 0.0078 |
