@@ -39,6 +39,7 @@ class ECSolver(BaseSolver):
 
     def _wandb_config(self, job_type: str) -> dict[str, object]:
         cfg = self.cfg
+        yaml_cfg = getattr(cfg, 'yaml_cfg', {})
         config = {
             'task': getattr(cfg, 'task', None),
             'job_type': job_type,
@@ -60,7 +61,28 @@ class ECSolver(BaseSolver):
             if value is not None:
                 config[attr] = type(value).__name__
 
+        early_stopping_config = yaml_cfg.get('early_stopping')
+        if early_stopping_config is not None:
+            config['early_stopping'] = early_stopping_config
+
         return config
+
+    def _early_stopping_config(self) -> tuple[bool, int, float]:
+        config = getattr(self.cfg, 'yaml_cfg', {}).get('early_stopping', {})
+        enabled = bool(config.get('enabled', False))
+        patience = int(config.get('patience', 0))
+        min_delta = float(config.get('min_delta', 0.0))
+
+        if patience < 0:
+            raise ValueError('early_stopping.patience must be >= 0')
+        if min_delta < 0:
+            raise ValueError('early_stopping.min_delta must be >= 0')
+
+        return enabled, patience, min_delta
+
+    @staticmethod
+    def _is_early_stopping_improvement(current_metric: float, best_metric: float | None, min_delta: float) -> bool:
+        return best_metric is None or current_metric > best_metric + min_delta
 
     def _init_wandb(self, job_type: str) -> Any | None:
         if not dist_utils.is_main_process():
@@ -137,6 +159,10 @@ class ECSolver(BaseSolver):
         else:
             self.self_lr_scheduler = False
 
+        early_stopping_enabled, early_stopping_patience, early_stopping_min_delta = self._early_stopping_config()
+        early_stopping_best_metric: float | None = None
+        early_stopping_bad_epochs = 0
+
         top1 = 0
         best_stat = {'epoch': -1, }
         training_completed = False
@@ -166,6 +192,7 @@ class ECSolver(BaseSolver):
                     best_stat[k] = test_stats[k][0]
                     top1 = test_stats[k][0]
                     print(f'best_stat: {best_stat}')
+                early_stopping_best_metric = test_stats['coco_eval_bbox'][0]
 
                 if wandb_run is not None and dist_utils.is_main_process():
                     wandb_run.summary['best_epoch'] = self.last_epoch
@@ -261,12 +288,30 @@ class ECSolver(BaseSolver):
                     best_stat_print[k] = max(best_stat[k], top1)
                     print(f'best_stat: {best_stat_print}')  # global best
 
+                current_early_stopping_metric = test_stats['coco_eval_bbox'][0]
+                should_stop_early = False
+                if early_stopping_enabled:
+                    if self._is_early_stopping_improvement(
+                        current_early_stopping_metric,
+                        early_stopping_best_metric,
+                        early_stopping_min_delta,
+                    ):
+                        early_stopping_best_metric = current_early_stopping_metric
+                        early_stopping_bad_epochs = 0
+                    else:
+                        early_stopping_bad_epochs += 1
+                        should_stop_early = early_stopping_bad_epochs >= early_stopping_patience
+
                 if wandb_run is not None and dist_utils.is_main_process():
                     wandb_run.summary['epoch'] = epoch
                     wandb_run.summary['best_epoch'] = best_stat['epoch']
                     for k, v in best_stat.items():
                         if k != 'epoch':
                             wandb_run.summary[f'best/{k}'] = v
+                    if early_stopping_enabled:
+                        wandb_run.summary['early_stopping/bad_epochs'] = early_stopping_bad_epochs
+                        wandb_run.summary['early_stopping/best_metric'] = early_stopping_best_metric
+                        wandb_run.summary['early_stopping/stopped'] = should_stop_early
 
                 log_stats = {
                     **{f'train_{k}': v for k, v in train_stats.items()},
@@ -291,6 +336,18 @@ class ECSolver(BaseSolver):
                                         self.output_dir / "eval" / name)
                 if torch.cuda.is_available():  # Just for clearing up GPU memory. You can remove it if you have enough GPU memory.
                     torch.cuda.empty_cache()
+
+                if should_stop_early:
+                    print(
+                        'Early stopping triggered at epoch {} after {} validation epochs without '
+                        'coco_eval_bbox[0] improvement greater than {}. Best metric: {}'.format(
+                            epoch,
+                            early_stopping_bad_epochs,
+                            early_stopping_min_delta,
+                            early_stopping_best_metric,
+                        )
+                    )
+                    break
 
             total_time = time.time() - start_time
             total_time_str = str(datetime.timedelta(seconds=int(total_time)))
