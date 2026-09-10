@@ -27,4 +27,4 @@ mkdir -p logs
 uv sync --frozen
 
 cd models/EdgeCrafter/ecdetseg
-uv run torchrun --standalone --nproc_per_node=2 train.py -c configs/ecdet/ecdet_l_sahi.yml --use-amp --seed=0 --resume-training
+uv run torchrun --standalone --nproc_per_node=2 train.py -c configs/ecdet/ecdet_l_1024_sahi_oversampling.yml --use-amp --seed=0 -t ecdet_l.pth
