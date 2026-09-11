@@ -13,7 +13,7 @@ train_dataloader:
   dataset:
     type: CocoDetection
     img_folder: ../../../data/sahi/sliced_coco/train
-    ann_file: ../../../data/sahi_oversampled/train/annotations_train_sahi_oversampled_1to7.json
+    ann_file: ../../../data/sahi_oversampled/train/annotations_train_sahi_oversampled.json
     return_masks: False
     transforms:
       type: Compose
@@ -30,7 +30,7 @@ val_dataloader:
   dataset:
     type: CocoDetection
     img_folder: ../../../data/sahi/sliced_coco/val
-    ann_file: ../../../data/sahi/sliced_coco/val/val_sliced_coco_1to7.json
+    ann_file: ../../../data/sahi/sliced_coco/val/val_sliced_coco.json
     return_masks: False
     transforms:
       type: Compose
