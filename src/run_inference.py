@@ -1704,7 +1704,7 @@ def main(argv: list[str] | None = None) -> None:
     init_wandb_run()
 
     eval_artifact = wandb.Artifact(
-        name=f"{RUN_NAME}_eval_files",
+        name=f"ecdet_hybrid_{wandb.run.id}_eval_files",
         type="evaluation",
         description=f"{'SAHI' if USE_SAHI else 'Direct'} predictions and existing COCO ground-truth for evaluation.",
     )
