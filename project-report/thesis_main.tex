@@ -60,6 +60,74 @@
 % For the final product, this has to be commented out.
 %\includeonly{introduction,appendix,foo,bar}
 
+% Cover variables for easy editing
+\newcommand{\ReportTitle}{RAIL-BENCH Object Detection Challenge}
+\newcommand{\ReportDocumentType}{Project Report}
+\newcommand{\ReportMembers}{%
+  \begin{tabular}{@{}lll@{}}
+    \textbf{Forename} & \textbf{Surname} & \textbf{Student number} \\
+    Forename 1 & Surname 1 & Student number 1 \\
+    Forename 2 & Surname 2 & Student number 2 \\
+  \end{tabular}%
+}
+\newcommand{\ReportAdvisor}{Advisor}
+\newcommand{\ReportStart}{Start}
+\newcommand{\ReportEnd}{End}
+
+\makeatletter
+\def\enddeckblatt{%
+\clearpage
+\thispagestyle{empty}
+\vspace*{-4cm}
+\begin{flushleft}
+\begin{tabular}{@{} c @{\hspace{6cm}} c @{}}
+\adjustbox{valign=t}{\includegraphics[width=5.5cm]{lmedoc/FAU_TechFak_EN_H_RGB_darkblue-1.png}} & \adjustbox{valign=t}{\includegraphics[width=5.5cm]{lmedoc/logo_large.png}}
+\end{tabular}
+\end{flushleft}
+\vspace*{1.6cm}
+\begin{center}
+\Large
+{\bfseries \@Titel}\\[20mm]
+\large
+{\bfseries \ReportDocumentType}\\[10mm]
+\normalsize
+\ifnum\language=\l@english submitted \else vorgelegt \fi \\
+\ifnum\language=\l@english by \else von \fi \\
+\vskip 0.8cm plus 0.2cm minus 0.5cm\relax
+\end{center}
+\begin{center}
+\ReportMembers\\[4mm]
+\vfill
+\end{center}
+\begin{center}
+\ifnum\language=\l@english\relax
+  Written at
+\else
+  Angefertigt am
+\fi
+\\[5mm]
+Lehrstuhl f"ur Mustererkennung (Informatik 5)\\
+Department Informatik \\
+Friedrich-Alexander-Universit"at Erlangen-N"urnberg.\\[5mm]
+\@ifundefined{ZweitInstitut}{}{%
+\ifnum\language=\l@english\relax
+  in Cooperation with
+\else
+  in Zusammenarbeit mit
+\fi
+\\[5mm]
+  \ZweitInstitut\\[10mm]
+}
+\end{center}
+\begin{flushleft}
+\ifnum\language=\l@english\relax Advisor\else Betreuer\fi: \@Betreuer \\[2mm]
+\ifnum\language=\l@english\relax Started\else Beginn der Arbeit\fi: \@Start \\[2mm]
+\ifnum\language=\l@english\relax Finished\else Abgabe der Arbeit\fi: \@Ende \\
+\end{flushleft}
+\clearpage
+\egroup}
+\makeatother
+
 
 \pagenumbering{roman}
 
@@ -68,14 +136,14 @@
 % %CONFIG
 % This is for students' theses
   \begin{deckblatt}
-    \Titel{Titel} % Title
-    \Name{Name} % Last name
-    \Vorname{Vorname} % Given name
-    \Geburtsort{Geburtsort} % Place of birth
-    \Geburtsdatum{Geburtsdatum} % Date of birth
-    \Betreuer{Betreuer} % Advisor
-    \Start{Start} % Start of thesis
-    \Ende{Ende} % End of thesis
+    \Titel{\ReportTitle} % Title
+    \Name{} % Last name (unused in custom cover)
+    \Vorname{} % Given name (unused in custom cover)
+    \Geburtsort{} % Place of birth (not used)
+    \Geburtsdatum{} % Date of birth (not used)
+    \Betreuer{\ReportAdvisor} % Advisor
+    \Start{\ReportStart} % Start date
+    \Ende{\ReportEnd} % End date
     %\ZweitInstitut{ZweitInstitut} % Cooperation partner
   \end{deckblatt}
 
@@ -98,7 +166,7 @@ angenommen wurde. Alle Ausf"uhrungen, die w"ortlich oder sinngem"a"s
 \begin{center}
 \bfseries
 % Abstract in German
-{\selectlanguage{german}"Ubersicht}
+{\selectlanguage{german}"Ubersicht"}
 \normalfont
 \end{center}
 
@@ -119,24 +187,7 @@ angenommen wurde. Alle Ausf"uhrungen, die w"ortlich oder sinngem"a"s
 
 \cleardoublepage \pagenumbering{arabic}
 
-\include{introduction}   % Introduction 
-\cleardoublepage
-\include{background}   % (\chapter{})
-\cleardoublepage
-\include{methodology}   % (\chapter{})
-\cleardoublepage
-%% ... more chapters ....
-%\include{conlusion}   % Conclusion (\chapter{Conclusion}  TEXT)
-%\cleardoublepage
-
-\appendix
-\cleardoublepage
-\include{appendix}   % appendix A
-\cleardoublepage
-%\include{thesis10}   % appendix B
-%\cleardoublepage
-%\include{thesis11}   % appendix C
-%\cleardoublepage
+\input{report}
 
 %% Do not change, auto-generated lists of figures, tables and literature %%
 % Glossar
