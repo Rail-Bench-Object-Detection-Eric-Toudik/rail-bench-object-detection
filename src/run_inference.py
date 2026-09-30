@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -144,6 +145,12 @@ def parse_args(
         type=Path,
         default=default_output_root,
         help="Base output directory used to isolate run artifacts.",
+    )
+    parser.add_argument(
+        "--split",
+        choices=("val", "test"),
+        default="val",
+        help="Image split. Test mode exports predictions without ground-truth evaluation.",
     )
     parser.add_argument(
         "--ecdet-config-path",
@@ -604,6 +611,34 @@ def collect_image_paths(source_dir: Path) -> list[Path]:
         raise FileNotFoundError(f"No images found in {source_dir}")
 
     return image_paths
+
+
+def write_test_image_manifest(source_dir: Path, out_path: Path) -> Path:
+    """Write image metadata for SAHI export and filename mapping, without test labels."""
+    images = []
+    for image_id, image_path in enumerate(sorted(collect_image_paths(source_dir)), start=1):
+        with Image.open(image_path) as image:
+            width, height = image.size
+        images.append({
+            "id": image_id,
+            "file_name": image_path.name,
+            "width": width,
+            "height": height,
+        })
+
+    manifest = {
+        "images": images,
+        "categories": [
+            {"id": category_id, "name": name}
+            for name, category_id in CATEGORY_NAME_TO_ID.items()
+        ],
+        "annotations": [],
+    }
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8") as file:
+        json.dump(manifest, file, ensure_ascii=False, indent=2)
+    print(f"Test image manifest: {out_path} ({len(images)} images; no ground-truth labels)")
+    return out_path
 
 
 def run_direct_predict(
@@ -1548,6 +1583,8 @@ def evaluate_coco(gt_json_path: Path, pred_json_path: Path) -> dict:
 # ---------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> None:
+    """Run inference and export predictions, evaluating only the validation split."""
+    global SPLIT
     global ECDET_CONFIG_PATH, OUTPUT_DIR, POSTPROCESS_MATCH_THRESHOLD, RUN_NAME, RUN_OUTPUT_DIR, USE_HYBRID, USE_SAHI, DIRECT_WANDB_ARTIFACT, SAHI_WANDB_ARTIFACT
     args = parse_args(
         argv,
@@ -1556,6 +1593,7 @@ def main(argv: list[str] | None = None) -> None:
         default_ecdet_config_path=ECDET_CONFIG_PATH,
         default_use_sahi=USE_SAHI,
     )
+    SPLIT = args.split
     OUTPUT_DIR = args.output_root
     ECDET_CONFIG_PATH = args.ecdet_config_path
     POSTPROCESS_MATCH_THRESHOLD = args.postprocess_match_threshold
@@ -1621,18 +1659,19 @@ def main(argv: list[str] | None = None) -> None:
         print_yolo_model_information(sahi_model_path if USE_SAHI else direct_model_path)
 
     source_dir = resolve_split_image_dir(DATA_CONFIG_PATH, SPLIT)
-    gt_coco_path = DEFAULT_GT_COCO_PATH
+    if SPLIT == "test":
+        # Existing SAHI/export helpers need image IDs, not ground-truth annotations.
+        gt_coco_path = write_test_image_manifest(source_dir, RUN_OUTPUT_DIR / "test_images.json")
+    else:
+        gt_coco_path = DEFAULT_GT_COCO_PATH
+        if not gt_coco_path.exists():
+            raise FileNotFoundError(f"Ground-truth COCO file not found: {gt_coco_path}")
 
-    if not gt_coco_path.exists():
-        raise FileNotFoundError(f"Ground-truth COCO file not found: {gt_coco_path}")
-
-    # Stelle sicher, dass die Ground Truth 1-indizierte Kategorien hat (statt 0-indiziert von YOLO)
-    # Dies macht sie konsistent mit den YOLO/SAHI-Vorhersagen nach unserem Offset
-    try:
-        print("\nAnpassung der Ground-Truth-Kategorien (0-6 -> 1-7)...")
-        fix_gt_category_ids(gt_coco_path, category_id_offset=1)
-    except Exception as e:
-        print(f"Warning: Could not fix GT category IDs: {e}")
+        try:
+            print("\nAnpassung der Ground-Truth-Kategorien (0-6 -> 1-7)...")
+            fix_gt_category_ids(gt_coco_path, category_id_offset=1)
+        except Exception as e:
+            print(f"Warning: Could not fix GT category IDs: {e}")
 
     # Wähle zwischen SAHI und direkter Inference
     if USE_HYBRID:
@@ -1681,14 +1720,21 @@ def main(argv: list[str] | None = None) -> None:
             prediction_label_mode=prediction_label_mode_for_export,
         )
     except Exception as e:
+        if SPLIT == "test":
+            raise
         print(f"Warning: failed to write normalized pred_test.json: {e}")
 
     eval_pred_path = pred_test_path if pred_test_path is not None and pred_test_path.exists() else pred_json_path
-    print(f"\nInspecting category IDs for evaluation predictions: {eval_pred_path}")
-    inspect_category_ids(
-        gt_json_path=gt_coco_path,
-        pred_json_path=eval_pred_path,
-    )
+    if SPLIT == "test":
+        submission_path = PROJECT_ROOT / "pred_test.json"
+        shutil.copyfile(eval_pred_path, submission_path)
+        print(f"Test predictions exported to: {submission_path}")
+    else:
+        print(f"\nInspecting category IDs for evaluation predictions: {eval_pred_path}")
+        inspect_category_ids(
+            gt_json_path=gt_coco_path,
+            pred_json_path=eval_pred_path,
+        )
 
    # metrics = evaluate_coco(
    #     gt_json_path=gt_coco_path,
@@ -1704,16 +1750,24 @@ def main(argv: list[str] | None = None) -> None:
     init_wandb_run()
 
     eval_artifact = wandb.Artifact(
-        name=f"ecdet_hybrid_{wandb.run.id}_eval_files",
+        name=f"{MODEL_BACKEND}_{inference_mode.lower()}_{wandb.run.id}_eval_files",
         type="evaluation",
-        description=f"{'SAHI' if USE_SAHI else 'Direct'} predictions and existing COCO ground-truth for evaluation.",
+        description=(
+            f"{inference_mode} test predictions without ground-truth labels."
+            if SPLIT == "test"
+            else f"{inference_mode} predictions and existing COCO ground-truth for evaluation."
+        ),
     )
 
-    eval_artifact.add_file(str(gt_coco_path))
+    if SPLIT != "test":
+        eval_artifact.add_file(str(gt_coco_path))
     eval_artifact.add_file(str(eval_pred_path))
     wandb.log_artifact(eval_artifact)
 
     wandb.finish()
+
+    if SPLIT == "test":
+        return
 
     benchmark_calculator = BenchmarkCalculator(
         test_pipeline=TEST_PIPELINE,
