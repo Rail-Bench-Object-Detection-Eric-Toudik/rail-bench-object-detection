@@ -12,9 +12,18 @@ To address these challenges, the \acrfull{kit} has introduced \emph{RAIL-BENCH},
     \item Monocular Visual Odometry
 \end{itemize}
 
+Among the five challenges included in the suite, the \emph{RAIL-BENCH Object Detection Challenge} focuses on detecting and classifying objects relevant to railway operation. This challenge is built upon a dataset of 2500 real-world RGB images recorded from a train driver's perspective under diverse environmental conditions, including urban, rural, and station scenarios, and varying weather and camera setups \cite{codabench-railbench-object}. Each image is annotated with axis-aligned bounding boxes covering seven object categories \cite{railbench-object-detection-page}:
+\begin{itemize}
+    \item Train
+    \item Person
+    \item Bicycle
+    \item Road Vehicle
+    \item Signal
+    \item Signal Pole
+    \item Catenary Pole
+\end{itemize}
+Additional annotation attributes such as occlusion levels and ignore flags further reflect the complexity of real railway scenes, where small, distant, or densely grouped objects frequently occur.
 
-Among the five challenges included in the suite, the \emph{RAIL-BENCH Object Detection Challenge} focuses on detecting and classifying objects relevant to railway operation. This challenge is built upon a dataset of 2500 real-world RGB images recorded from a train driver's perspective under diverse environmental conditions, including urban, rural, and station scenarios, and varying weather and camera setups \cite{codabench-railbench-object}. Each image is annotated with axis-aligned bounding boxes covering seven object categories: train, person, bicycle, road vehicle, signal, signal pole, and catenary pole \cite{railbench-object-detection-page}. Additional annotation attributes such as occlusion levels and ignore flags further reflect the complexity of real railway scenes, where small, distant, or densely grouped objects frequently occur.
-
-The challenge evaluates submitted predictions using the COCO-style \acrfull{map} across multiple \acrfull{iou} thresholds. Three difficulty levels---easy, moderate, and hard---are defined based on bounding box size and occlusion, with final rankings determined by the mAP score in the hard setting averaged over all IoU thresholds and object classes \cite{railbench-object-detection-page}. This evaluation protocol ensures that models are assessed not only on clearly visible objects but also on small, heavily occluded, and operationally critical instances.
+The challenge evaluates submitted predictions using the COCO-style \acrfull{map} across multiple \acrfull{iou} thresholds. Three difficulty levels - easy, moderate, and hard - are defined based on bounding box size and occlusion, with final rankings determined by the \acrshort{map} score in the hard setting averaged over all \acrshort{iou} thresholds and object classes \cite{railbench-object-detection-page}. This evaluation protocol ensures that models are assessed not only on clearly visible objects but also on small, heavily occluded, and operationally critical instances.
 
 The goal of our project is to develop, train, and evaluate an object detection model that meets the requirements of the RAIL-BENCH Object Detection Challenge. Working with the official dataset and adhering strictly to the challenge guidelines, we aim to investigate the performance of modern deep learning architectures in railway-specific environments, analyze their strengths and limitations, and contribute to the broader effort of establishing robust perception systems for future autonomous railway operation. This report documents our approach, covering related work, methodology, experimental setup, evaluation results, and conclusions drawn from our participation in the challenge.
