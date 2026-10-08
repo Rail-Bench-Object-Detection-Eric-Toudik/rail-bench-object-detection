@@ -1,0 +1,14 @@
+\chapter{Evaluations}
+\label{ch:evaluations}
+
+\section{Dataset}
+The exploratory data analysis in the repository reports good data quality: there are no missing values, no NaNs, and no invalid bounding boxes. Most validation and test images are high-resolution, especially 3840\,$\times$\,2160 and 4112\,$\times$\,2504. The annotations are class-imbalanced, with \texttt{catenary\_pole} as the most frequent class and \texttt{train} and \texttt{bicycle} among the rarest classes. The bounding boxes are mostly small relative to the image size, show a strong height-to-width imbalance, and the data also contains occlusions and varying weather conditions.
+
+\section{Metrics}
+The experiment logs report average precision and recall-based metrics, including AP, AP50, AP75, APeasy, APmoderate, APhard, and the corresponding AR measures. For class-wise analysis, the logs also list AP values for individual classes across IoU thresholds from 0.50 to 0.95.
+
+\section{Experimental Protocol}
+All documented model runs use the same train/validation split and evaluate on the validation set with the RailBench Toolkit. This makes the runs directly comparable within the repository. The notes also distinguish between direct inference, SAHI inference, and a hybrid setup that merges predictions from both pipelines.
+
+\section{Results}
+The reported results show that augmentation and inference strategy matter for this benchmark. In the YOLO experiments, the no-augmentation baseline reaches AP 0.1460, while the blur-augmentation run improves to AP 0.1696. For EdgeCrafter, the hybrid direct-plus-SAHI configuration achieves AP 0.2968 and AP50 0.5429 on the validation set. Taken together, the results suggest that the benchmark is sensitive to small objects and class imbalance, and that SAHI-based or hybrid inference strategies can be beneficial.

@@ -1,0 +1,11 @@
+\chapter{Methodology}
+\label{ch:methodology}
+
+\section{Overview}
+The repository documents several object detection experiments that are evaluated on a shared training and validation split. According to the experiment notes, all models are trained on the same training dataset and the metrics are computed on the validation set with the RailBench Toolkit.
+
+\section{Model Variants}
+The experiments cover YOLOv11-based baselines as well as EdgeCrafter-based detector variants. The YOLO notes include runs with no augmentation, blur augmentation, basic augmentation, and SAHI-based variants. The EdgeCrafter notes document ECDet configurations and a hybrid strategy that combines direct inference with SAHI inference.
+
+\section{Implementation}
+Representative YOLO runs use \texttt{yolo11s}, 300 epochs, a batch size of 12, an input size of 1024, and a fixed seed of 42. The EdgeCrafter runs use ECDet with AdamW, a flat-cosine learning-rate schedule, and 640-pixel evaluation resolution. These settings are reported here as project documentation rather than as a general prescription.

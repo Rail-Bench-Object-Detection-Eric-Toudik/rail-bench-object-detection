@@ -1,0 +1,213 @@
+% Document class for LME theses: lmedoc
+% %LANGUAGE
+% %CONFIG
+%    The option "german" uses german.sty
+%    For english papers, use the "english" option
+% Possible types of theses:
+% bt - Bachelor's thesis
+% mt - Master's thesis
+% diss - Dissertation
+% sa - Student thesis
+% fp - Forschungspraktikum
+% pa - Projektarbeit
+%\documentclass[german,bt]{lmedoc/lmedoc}
+\documentclass[english,fp]{lmedoc/lmedoc}
+
+
+%%%%%%%%%%%%%%%%%%
+% pdflatex and lualatex are supported
+% ++ "Umlaut" support
+%    The package "inputenc" can be used to write Umlaute or the german double s
+%    directly. You need to use the correct encoding, e.g. latin1.
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+  \usepackage{lmodern}
+\else
+  \ifXeTeX
+     \usepackage{fontspec}
+  \else 
+     \usepackage{luatextra}
+  \fi
+\fi
+
+%Load additional packages
+\usepackage{lmedoc/packages}
+% put in this file your abbreviations
+\input{abbreviations.tex}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% supress messages because of underful hbox, this is not a problem
+\hbadness=10000
+
+
+
+% some useful commands
+\makeatletter % let's define a single dot
+\DeclareRobustCommand\onedot{\futurelet\@let@token\@onedot}
+\newcommand{\@onedot}{\ifx\@let@token.\else.\null\fi\xspace}
+\makeatother
+
+
+
+% Sets the bib file
+
+\addbibresource{literature.bib}
+
+% When writing a large document, it is sometimes useful to work on selected sections of the document.
+% Use this command to only build the document partially. Speeds up the developement cycle.
+% For the final product, this has to be commented out.
+%\includeonly{introduction,appendix,foo,bar}
+
+% Cover variables for easy editing
+\newcommand{\ReportTitle}{RAIL-BENCH Object Detection Challenge}
+\newcommand{\ReportDocumentType}{Project Report}
+\newcommand{\ReportMembers}{%
+  \begin{tabular}{@{}lll@{}}
+    \textbf{Forename} & \textbf{Surname} & \textbf{Student number} \\
+    Forename 1 & Surname 1 & Student number 1 \\
+    Forename 2 & Surname 2 & Student number 2 \\
+  \end{tabular}%
+}
+\newcommand{\ReportAdvisor}{Dr.-Ing. Vincent Christlein}
+\newcommand{\ReportStart}{15.04.2026}
+\newcommand{\ReportEnd}{End}
+
+\makeatletter
+\def\enddeckblatt{%
+\clearpage
+\thispagestyle{empty}
+\vspace*{-4cm}
+\begin{flushleft}
+\begin{tabular}{@{} c @{\hspace{6cm}} c @{}}
+\adjustbox{valign=t}{\includegraphics[width=5.5cm]{lmedoc/FAU_TechFak_EN_H_RGB_darkblue-1.png}} & \adjustbox{valign=t}{\includegraphics[width=5.5cm]{lmedoc/logo_large.png}}
+\end{tabular}
+\end{flushleft}
+\vspace*{1.6cm}
+\begin{center}
+\Large
+{\bfseries \@Titel}\\[20mm]
+\large
+{\bfseries \ReportDocumentType}\\[10mm]
+\normalsize
+\ifnum\language=\l@english submitted \else vorgelegt \fi \\
+\ifnum\language=\l@english by \else von \fi \\
+\vskip 0.8cm plus 0.2cm minus 0.5cm\relax
+\end{center}
+\begin{center}
+\ReportMembers\\[4mm]
+\vfill
+\end{center}
+\begin{center}
+\ifnum\language=\l@english\relax
+  Written at
+\else
+  Angefertigt am
+\fi
+\\[5mm]
+Lehrstuhl f"ur Mustererkennung (Informatik 5)\\
+Department Informatik \\
+Friedrich-Alexander-Universit"at Erlangen-N"urnberg.\\[5mm]
+\@ifundefined{ZweitInstitut}{}{%
+\ifnum\language=\l@english\relax
+  in Cooperation with
+\else
+  in Zusammenarbeit mit
+\fi
+\\[5mm]
+  \ZweitInstitut\\[10mm]
+}
+\end{center}
+\begin{flushleft}
+\ifnum\language=\l@english\relax Advisor\else Betreuer\fi: \@Betreuer \\[2mm]
+\ifnum\language=\l@english\relax Started\else Beginn der Arbeit\fi: \@Start \\[2mm]
+\ifnum\language=\l@english\relax Finished\else Abgabe der Arbeit\fi: \@Ende \\
+\end{flushleft}
+\clearpage
+\egroup}
+\makeatother
+
+
+\pagenumbering{roman}
+
+\begin{document}
+\clearpage
+% %CONFIG
+% This is for students' theses
+  \begin{deckblatt}
+    \Titel{\ReportTitle} % Title
+    \Name{} % Last name (unused in custom cover)
+    \Vorname{} % Given name (unused in custom cover)
+    \Geburtsort{} % Place of birth (not used)
+    \Geburtsdatum{} % Date of birth (not used)
+    \Betreuer{\ReportAdvisor} % Advisor
+    \Start{\ReportStart} % Start date
+    \Ende{\ReportEnd} % End date
+    %\ZweitInstitut{ZweitInstitut} % Cooperation partner
+  \end{deckblatt}
+
+
+\cleardoublepage
+% Only necessary for thesis
+
+Ich versichere, dass ich die Arbeit ohne fremde Hilfe und ohne Benutzung
+anderer als der angegebenen Quellen angefertigt habe und dass die Arbeit
+in gleicher oder "ahnlicher Form noch keiner anderen Pr"ufungsbeh"orde
+vorgelegen hat und von dieser als Teil einer Pr"ufungsleistung
+angenommen wurde. Alle Ausf"uhrungen, die w"ortlich oder sinngem"a"s
+"ubernommen wurden, sind als solche gekennzeichnet.
+\\
+
+
+\cleardoublepage
+
+
+\begin{center}
+\bfseries
+% Abstract in German
+{\selectlanguage{german}"Ubersicht"}
+\normalfont
+\end{center}
+
+
+\vspace{5.0cm}
+
+\begin{center}
+\bfseries
+% Abstract in English
+{\selectlanguage{english}Abstract}
+\normalfont
+\end{center}
+
+
+\cleardoublepage
+
+\tableofcontents
+
+\cleardoublepage \pagenumbering{arabic}
+
+\input{report}
+
+%% Do not change, auto-generated lists of figures, tables and literature %%
+% Glossar
+\printunsrtglossary[type=abbreviations]
+\cleardoublepage
+
+% List of figures
+\addcontentsline{toc}{chapter}{\listfigurename}
+\listoffigures
+\cleardoublepage
+
+% List of tables
+\addcontentsline{toc}{chapter}{\listtablename}
+\listoftables
+\cleardoublepage
+
+% Literature list
+% %CONFIG:
+%\selectlanguage{german}{\addcontentsline{toc}{chapter}{\bibname}}
+\selectlanguage{english}{\addcontentsline{toc}{chapter}{\bibname}}
+
+\printbibliography
+\end{document}
