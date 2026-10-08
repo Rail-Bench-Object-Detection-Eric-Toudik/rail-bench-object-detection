@@ -10,6 +10,8 @@ import datetime
 import json
 import os
 import time
+from pathlib import Path
+from typing import Any, Sequence
 
 import torch
 import wandb
@@ -23,8 +25,21 @@ from .ec_engine import evaluate, train_one_epoch
 
 class ECSolver(BaseSolver):
 
-    def _wandb_config(self, job_type: str):
+    def _build_default_wandb_run_name(self, job_type: str) -> str:
+        """Build the default W&B run name from config metadata."""
+        config_name = f'{self.output_dir.name}.yml'
+        epochs = getattr(self.cfg, 'epochs', None)
+        resumed = 'resumed' if getattr(self.cfg, 'resume', None) else 'fresh'
+
+        parts = [job_type, self.cfg.task, config_name]
+        if epochs is not None:
+            parts.append(f'{epochs}ep')
+        parts.append(resumed)
+        return '_'.join(parts)
+
+    def _wandb_config(self, job_type: str) -> dict[str, object]:
         cfg = self.cfg
+        yaml_cfg = getattr(cfg, 'yaml_cfg', {})
         config = {
             'task': getattr(cfg, 'task', None),
             'job_type': job_type,
@@ -46,9 +61,30 @@ class ECSolver(BaseSolver):
             if value is not None:
                 config[attr] = type(value).__name__
 
+        early_stopping_config = yaml_cfg.get('early_stopping')
+        if early_stopping_config is not None:
+            config['early_stopping'] = early_stopping_config
+
         return config
 
-    def _init_wandb(self, job_type: str):
+    def _early_stopping_config(self) -> tuple[bool, int, float]:
+        config = getattr(self.cfg, 'yaml_cfg', {}).get('early_stopping', {})
+        enabled = bool(config.get('enabled', False))
+        patience = int(config.get('patience', 0))
+        min_delta = float(config.get('min_delta', 0.0))
+
+        if patience < 0:
+            raise ValueError('early_stopping.patience must be >= 0')
+        if min_delta < 0:
+            raise ValueError('early_stopping.min_delta must be >= 0')
+
+        return enabled, patience, min_delta
+
+    @staticmethod
+    def _is_early_stopping_improvement(current_metric: float, best_metric: float | None, min_delta: float) -> bool:
+        return best_metric is None or current_metric > best_metric + min_delta
+
+    def _init_wandb(self, job_type: str) -> Any | None:
         if not dist_utils.is_main_process():
             return None
 
@@ -62,7 +98,7 @@ class ECSolver(BaseSolver):
         project = getattr(self.cfg, 'wandb_project', None) or 'Rail-Bench-Object-Detection-EdgeCrafter'
         run_name = getattr(self.cfg, 'wandb_run_name', None)
         if run_name is None:
-            run_name = f'{job_type}_{self.cfg.task}_{self.output_dir.name}'
+            run_name = self._build_default_wandb_run_name(job_type)
 
         return wandb.init(
             project=project,
@@ -71,7 +107,7 @@ class ECSolver(BaseSolver):
             config=self._wandb_config(job_type),
         )
 
-    def _log_model_artifact(self, run, artifact_name: str, checkpoint_paths):
+    def _log_model_artifact(self, run: Any, artifact_name: str, checkpoint_paths: Sequence[Path]) -> None:
         if run is None or not dist_utils.is_main_process():
             return
 
@@ -83,12 +119,27 @@ class ECSolver(BaseSolver):
                 added = True
 
         if added:
-            run.log_artifact(artifact)
+            logged_artifact = run.log_artifact(artifact)
+            logged_artifact.wait()
+
+    def _resolve_final_model_checkpoint_paths(self) -> list[Path]:
+        """Return the final checkpoint file(s) that should be logged to W&B."""
+        best_checkpoint_path = self.output_dir / 'best.pth'
+        last_checkpoint_path = self.output_dir / 'last.pth'
+
+        if best_checkpoint_path.exists():
+            return [best_checkpoint_path]
+
+        if last_checkpoint_path.exists():
+            return [last_checkpoint_path]
+
+        return []
 
     def fit(self, ):
         self.train()
         args = self.cfg
         wandb_run = self._init_wandb('train')
+        artifact_id = getattr(wandb_run, 'id', wandb_run.name) if wandb_run is not None else None
 
         n_parameters, model_stats = stats(self.cfg)
         print(model_stats)
@@ -107,6 +158,10 @@ class ECSolver(BaseSolver):
             self.self_lr_scheduler = True
         else:
             self.self_lr_scheduler = False
+
+        early_stopping_enabled, early_stopping_patience, early_stopping_min_delta = self._early_stopping_config()
+        early_stopping_best_metric: float | None = None
+        early_stopping_bad_epochs = 0
 
         top1 = 0
         best_stat = {'epoch': -1, }
@@ -137,6 +192,7 @@ class ECSolver(BaseSolver):
                     best_stat[k] = test_stats[k][0]
                     top1 = test_stats[k][0]
                     print(f'best_stat: {best_stat}')
+                early_stopping_best_metric = test_stats['coco_eval_bbox'][0]
 
                 if wandb_run is not None and dist_utils.is_main_process():
                     wandb_run.summary['best_epoch'] = self.last_epoch
@@ -226,10 +282,25 @@ class ECSolver(BaseSolver):
                         best_stat_print['epoch'] = epoch
                         top1 = best_stat[k]
                         if self.output_dir:
-                            dist_utils.save_on_master(self.state_dict(), self.output_dir / 'best.pth')
+                            best_checkpoint_path = self.output_dir / 'best.pth'
+                            dist_utils.save_on_master(self.state_dict(), best_checkpoint_path)
 
                     best_stat_print[k] = max(best_stat[k], top1)
                     print(f'best_stat: {best_stat_print}')  # global best
+
+                current_early_stopping_metric = test_stats['coco_eval_bbox'][0]
+                should_stop_early = False
+                if early_stopping_enabled:
+                    if self._is_early_stopping_improvement(
+                        current_early_stopping_metric,
+                        early_stopping_best_metric,
+                        early_stopping_min_delta,
+                    ):
+                        early_stopping_best_metric = current_early_stopping_metric
+                        early_stopping_bad_epochs = 0
+                    else:
+                        early_stopping_bad_epochs += 1
+                        should_stop_early = early_stopping_bad_epochs >= early_stopping_patience
 
                 if wandb_run is not None and dist_utils.is_main_process():
                     wandb_run.summary['epoch'] = epoch
@@ -237,6 +308,10 @@ class ECSolver(BaseSolver):
                     for k, v in best_stat.items():
                         if k != 'epoch':
                             wandb_run.summary[f'best/{k}'] = v
+                    if early_stopping_enabled:
+                        wandb_run.summary['early_stopping/bad_epochs'] = early_stopping_bad_epochs
+                        wandb_run.summary['early_stopping/best_metric'] = early_stopping_best_metric
+                        wandb_run.summary['early_stopping/stopped'] = should_stop_early
 
                 log_stats = {
                     **{f'train_{k}': v for k, v in train_stats.items()},
@@ -262,17 +337,32 @@ class ECSolver(BaseSolver):
                 if torch.cuda.is_available():  # Just for clearing up GPU memory. You can remove it if you have enough GPU memory.
                     torch.cuda.empty_cache()
 
+                if should_stop_early:
+                    print(
+                        'Early stopping triggered at epoch {} after {} validation epochs without '
+                        'coco_eval_bbox[0] improvement greater than {}. Best metric: {}'.format(
+                            epoch,
+                            early_stopping_bad_epochs,
+                            early_stopping_min_delta,
+                            early_stopping_best_metric,
+                        )
+                    )
+                    break
+
             total_time = time.time() - start_time
             total_time_str = str(datetime.timedelta(seconds=int(total_time)))
             print('Training time {}'.format(total_time_str))
             training_completed = True
 
             if training_completed and wandb_run is not None:
-                artifact_paths = [self.output_dir / 'best.pth', self.output_dir / 'last.pth', self.output_dir / 'eval.pth']
-                if not artifact_paths[0].exists() and artifact_paths[1].exists():
-                    artifact_paths[0] = artifact_paths[1]
-                artifact_id = getattr(wandb_run, 'id', wandb_run.name)
-                self._log_model_artifact(wandb_run, f'{artifact_id}_model', artifact_paths)
+                checkpoint_paths = self._resolve_final_model_checkpoint_paths()
+                if checkpoint_paths:
+                    self._log_model_artifact(wandb_run, f'{artifact_id}_model', checkpoint_paths)
+                else:
+                    print(
+                        "Warning: no final checkpoint found for W&B artifact upload. "
+                        f"Expected best.pth or last.pth in {self.output_dir}"
+                    )
                 wandb_run.summary['training_time'] = total_time
                 wandb_run.summary['training_time_hms'] = total_time_str
         finally:

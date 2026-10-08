@@ -134,7 +134,7 @@ val_dataloader:
         - {type: Normalize, mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225]}
       policy: default
   shuffle: False
-  total_batch_size: 64
+  total_batch_size: 12
   num_workers: 4
 
 
@@ -186,7 +186,12 @@ optimizer:
 ## LR-Scheduler
 epochs: 62 # 5x (1x for 12 epochs) + 2(no_aug_epoch)
 
+early_stopping:
+  enabled: False
+  patience: 10
+  min_delta: 0.0
+
 lrsheduler: flatcosine
 lr_gamma: 0.5
 warmup_iter: 2000
-flat_epoch: ~    
+flat_epoch: ~

@@ -40,15 +40,21 @@ def main(args, ) -> None:
     """
     dist_utils.setup_distributed(args.print_rank, args.print_method, seed=args.seed)
 
+    resume_training = args.resume_training
+
     assert not all([args.tuning, args.resume]), \
         'Only support from_scrach or resume or tuning at one time'
 
 
     update_dict = yaml_utils.parse_cli(args.update) # update cfg from command line
     update_dict.update({k: v for k, v in args.__dict__.items() \
-        if k not in ['update', ] and v is not None})
+        if k not in ['update', 'resume_training'] and v is not None})
 
     cfg = YAMLConfig(args.config, **update_dict)
+
+    if resume_training and not args.resume and not args.tuning:
+        args.resume = os.path.join(cfg.output_dir, 'last.pth')
+        cfg.resume = args.resume
 
     if args.resume or args.tuning:
         if 'ViTAdapter' in cfg.yaml_cfg:
@@ -80,6 +86,8 @@ if __name__ == '__main__':
     parser.add_argument('--output-dir', type=str, help='output directoy')
     parser.add_argument('--summary-dir', type=str, help='tensorboard summry')
     parser.add_argument('--test-only', action='store_true', default=False,)
+    parser.add_argument('--resume-training', action='store_true', default=False,
+                        help='resume training from outputs/<model_size>/last.pth')
 
     # priority 1
     parser.add_argument('-u', '--update', nargs='+', help='update yaml config')

@@ -1,39 +1,231 @@
+import argparse
 import json
 import os
+import shutil
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import wandb
+import torch
 import yaml
 from dotenv import load_dotenv
 from PIL import Image
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
-from ultralytics import YOLO
-from sahi.predict import predict
+import torchvision.transforms as T
 
 from src.calculate_railbench_benchmark import BenchmarkCalculator
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
+
+def build_run_name(
+    model_backend: str,
+    split: str,
+    use_hybrid: bool,
+    use_sahi: bool,
+    slice_width: int,
+    slice_height: int,
+    confidence_threshold: float,
+    overlap_width_ratio: float,
+    postprocess_match_threshold: float,
+) -> str:
+    """Build a stable run name from the active inference settings."""
+    if use_hybrid:
+        return (
+            f"{model_backend}_hybrid_{split}_"
+            f"{slice_width}x{slice_height}_"
+            f"conf{str(confidence_threshold).replace('.', '')}_"
+            f"overlap{str(overlap_width_ratio).replace('.', '')}"
+            f"postprocess{str(postprocess_match_threshold).replace('.', '')}"
+        )
+
+    if use_sahi:
+        return (
+            f"{model_backend}_sahi_{split}_"
+            f"{slice_width}x{slice_height}_"
+            f"conf{str(confidence_threshold).replace('.', '')}_"
+            f"overlap{str(overlap_width_ratio).replace('.', '')}"
+            f"postprocess{str(postprocess_match_threshold).replace('.', '')}"
+        )
+
+    return (
+        f"{model_backend}_direct_{split}_"
+        f"conf{str(confidence_threshold).replace('.', '')}"
+    )
+
+
+def build_run_output_dir(output_root: Path, run_name: str) -> Path:
+    """Return the per-run output directory used to isolate concurrent jobs."""
+    return output_root / run_name
+
+
+def build_branch_output_dir(run_output_dir: Path, branch_name: str) -> Path:
+    """Return an isolated output directory for a specific inference branch."""
+    return run_output_dir / branch_name
+
+
+def build_unique_run_name(base_run_name: str, run_id: str) -> str:
+    """Combine the stable base name with a unique run identifier."""
+    return f"{base_run_name}_{run_id}"
+
+
+def _artifact_run_tag(artifact_path: str) -> str:
+    """Build a short, filesystem-safe tag from a W&B artifact path."""
+    artifact_name = artifact_path.rsplit("/", 1)[-1].replace(":", "-")
+    safe_tag = "".join(character if character.isalnum() or character in {"-", "_"} else "_" for character in artifact_name)
+    return safe_tag.strip("-_")[:24] or "artifact"
+
+
+def build_artifact_run_suffix(
+    direct_wandb_artifact: str | None,
+    sahi_wandb_artifact: str | None,
+) -> str:
+    """Build a compact suffix that distinguishes runs using different model artifacts."""
+    suffix_parts: list[str] = []
+
+    if direct_wandb_artifact and direct_wandb_artifact != WANDB_ARTIFACT:
+        suffix_parts.append(f"direct_{_artifact_run_tag(direct_wandb_artifact)}")
+
+    if sahi_wandb_artifact and sahi_wandb_artifact != WANDB_ARTIFACT and sahi_wandb_artifact != direct_wandb_artifact:
+        suffix_parts.append(f"sahi_{_artifact_run_tag(sahi_wandb_artifact)}")
+
+    return "_".join(suffix_parts)
+
+
+def build_run_id(explicit_run_id: str | None = None, slurm_job_id: str | None = None) -> str:
+    """Build a unique run identifier for output isolation and experiment tracking."""
+    if explicit_run_id:
+        return explicit_run_id.strip().replace(" ", "_")
+
+    if slurm_job_id is None:
+        slurm_job_id = os.getenv("SLURM_JOB_ID")
+
+    if slurm_job_id:
+        return f"slurm{slurm_job_id}"
+
+    return datetime.now(timezone.utc).strftime("utc%Y%m%dT%H%M%SZ")
+
+
+def _parse_bool(value: str) -> bool:
+    """Parse an explicit true or false command-line value."""
+    normalized_value = value.lower()
+    if normalized_value == "true":
+        return True
+    if normalized_value == "false":
+        return False
+    raise argparse.ArgumentTypeError("expected 'true' or 'false'")
+
+
+def parse_args(
+    argv: list[str] | None = None,
+    *,
+    default_postprocess_match_threshold: float,
+    default_output_root: Path,
+    default_ecdet_config_path: Path,
+    default_use_sahi: bool,
+) -> argparse.Namespace:
+    """Parse the runtime overrides for the inference entrypoint."""
+    parser = argparse.ArgumentParser(
+        prog="run_inference",
+        description="Run RailBench inference with configurable per-job overrides.",
+    )
+    parser.add_argument(
+        "--postprocess-match-threshold",
+        type=float,
+        default=default_postprocess_match_threshold,
+        help="NMS postprocess match threshold for SAHI runs.",
+    )
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=default_output_root,
+        help="Base output directory used to isolate run artifacts.",
+    )
+    parser.add_argument(
+        "--split",
+        choices=("val", "test"),
+        default="val",
+        help="Image split. Test mode exports predictions without ground-truth evaluation.",
+    )
+    parser.add_argument(
+        "--ecdet-config-path",
+        type=Path,
+        default=default_ecdet_config_path,
+        help="ECDet model configuration file.",
+    )
+    parser.add_argument(
+        "--hybrid-inference",
+        action="store_true",
+        help="Run both direct and SAHI inference and merge the filtered results.",
+    )
+    parser.add_argument(
+        "--use-sahi",
+        type=_parse_bool,
+        default=default_use_sahi,
+        metavar="{true,false}",
+        help="Use SAHI inference when --hybrid-inference is not set. Defaults to true.",
+    )
+    parser.add_argument(
+        "--direct-wandb-artifact",
+        default=None,
+        help="Optional W&B model artifact for the direct branch. Defaults to the configured model artifact.",
+    )
+    parser.add_argument(
+        "--sahi-wandb-artifact",
+        default=None,
+        help="Optional W&B model artifact for the SAHI branch. Defaults to the configured model artifact.",
+    )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Optional unique suffix for the run name. Falls back to SLURM_JOB_ID or a UTC timestamp.",
+    )
+    return parser.parse_args(argv)
 
 # ---------------------------------------------------------------------
 # Paths / Config
 # ---------------------------------------------------------------------
 TEST_PIPELINE = False
-USE_SAHI = True  # Set  False for direct/"normal" inference instead of sahi
+USE_HYBRID = False
+USE_SAHI = True
+MODEL_BACKEND = "ecdet"  # "yolo" or "ecdet"
+ECDET_CHECKPOINT_SOURCE = "wandb"  # "wandb" or "local"
+DIRECT_WANDB_ARTIFACT = None
+SAHI_WANDB_ARTIFACT = None
+# Manual label indexing per backend (no auto-detection).
+# - "zero_based": model outputs 0..6
+# - "one_based": model outputs 1..7
+YOLO_LABEL_INDEXING = "zero_based"
+ECDET_LABEL_INDEXING = "one_based"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
+ECDET_CONFIG_PATH = PROJECT_ROOT / "config" / "ecdet_large_config.yaml"
+ECDET_LOCAL_CHECKPOINT_PATH = PROJECT_ROOT / "models" / "EdgeCrafter" / "ecdetseg" / "outputs" / "ecdet_m" / "best.pth"
 
 if TEST_PIPELINE:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config_pipeline_test.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "pipeline_test" / "annotations_pipeline_test.json"
-    WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_yagd292m_model:v0"
+    YOLO_WANDB_ARTIFACT =  "disable eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_tvxbvrao_model:v0"
+    ECDET_WANDB_ARTIFACT = "disable eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/sz437qhg_model:v0"
 
 else:
     DATA_CONFIG_PATH = PROJECT_ROOT / "config" / "yolo_config.yaml"
     DEFAULT_GT_COCO_PATH = PROJECT_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
-    WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_4dvjoxtm_model:v0"
+    YOLO_WANDB_ARTIFACT = "disable eric-walsh-fau/Rail-Bench-Object-Detection-Eric-Toudik/run_keylpne9_model:v0"
+    ECDET_WANDB_ARTIFACT = "eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/upva347y_model:v0"
+# eric-walsh-fau/Rail-Bench-Object-Detection-EdgeCrafter/jcaaxdfz_model:v0
+WANDB_ARTIFACT = ECDET_WANDB_ARTIFACT if MODEL_BACKEND == "ecdet" else YOLO_WANDB_ARTIFACT
 
-
-WANDB_PROJECT = "Rail-Bench-Object-Detection-Eric-Toudik"
+if MODEL_BACKEND == "yolo":
+    WANDB_PROJECT = "Rail-Bench-Object-Detection-Eric-Toudik"
+else:
+    WANDB_PROJECT = "Rail-Bench-Object-Detection-EdgeCrafter"
 
 # ---------------------------------------------------------------------
 # SAHI / Evaluation Parameters
@@ -50,24 +242,29 @@ OVERLAP_WIDTH_RATIO = 0.3
 # Für reine Visualisierung wäre 0.25 sinnvoller.
 CONF_THRESHOLD = 0.001
 
-POSTPROCESS_MATCH_THRESHOLD = 0.5
+POSTPROCESS_MATCH_THRESHOLD = 0.3
 DEVICE = "cuda:0"  # oder "cpu"
 
-if USE_SAHI:
-    RUN_NAME = (
-        f"sahi_{SPLIT}_"
-        f"{SLICE_WIDTH}x{SLICE_HEIGHT}_"
-        f"conf{str(CONF_THRESHOLD).replace('.', '')}_"
-        f"overlap{str(OVERLAP_WIDTH_RATIO).replace('.', '')}"
-    )
-else:
-    RUN_NAME = (
-        f"direct_{SPLIT}_"
-        f"conf{str(CONF_THRESHOLD).replace('.', '')}"
-    )
+RUN_NAME = build_run_name(
+    MODEL_BACKEND,
+    SPLIT,
+    USE_HYBRID,
+    USE_SAHI,
+    SLICE_WIDTH,
+    SLICE_HEIGHT,
+    CONF_THRESHOLD,
+    OVERLAP_WIDTH_RATIO,
+    POSTPROCESS_MATCH_THRESHOLD,
+)
+RUN_OUTPUT_DIR = build_run_output_dir(OUTPUT_DIR, RUN_NAME)
 
 
-def download_model_from_wandb() -> Path:
+def init_wandb_run() -> None:
+    if wandb.run is not None:
+        return
+
+    RUN_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
     load_dotenv()
 
     api_key = os.getenv("WANDB_API_KEY")
@@ -79,9 +276,11 @@ def download_model_from_wandb() -> Path:
     wandb.init(
         project=WANDB_PROJECT,
         name=RUN_NAME,
+        dir=str(RUN_OUTPUT_DIR),
         job_type="sahi_inference_eval",
         config={
             "split": SPLIT,
+            "inference_mode": "hybrid" if USE_HYBRID else ("sahi" if USE_SAHI else "direct"),
             "slice_height": SLICE_HEIGHT,
             "slice_width": SLICE_WIDTH,
             "overlap_height_ratio": OVERLAP_HEIGHT_RATIO,
@@ -90,26 +289,111 @@ def download_model_from_wandb() -> Path:
             "postprocess_match_threshold": POSTPROCESS_MATCH_THRESHOLD,
             "device": DEVICE,
             "wandb_artifact": WANDB_ARTIFACT,
+            "direct_wandb_artifact": DIRECT_WANDB_ARTIFACT or WANDB_ARTIFACT,
+            "sahi_wandb_artifact": SAHI_WANDB_ARTIFACT or WANDB_ARTIFACT,
+            "model_backend": MODEL_BACKEND,
+            "ecdet_config_path": str(ECDET_CONFIG_PATH) if MODEL_BACKEND == "ecdet" else None,
+            "yolo_label_indexing": YOLO_LABEL_INDEXING,
+            "ecdet_label_indexing": ECDET_LABEL_INDEXING,
         },
     )
 
-    artifact = wandb.use_artifact(WANDB_ARTIFACT, type="model")
-    artifact_dir = Path(artifact.download())
 
-    candidates = list(artifact_dir.rglob("best.pt"))
+def download_model_from_wandb(wandb_artifact: str | None = None) -> Path:
+    init_wandb_run()
 
-    if not candidates:
-        candidates = list(artifact_dir.rglob("*.pt"))
+    resolved_artifact = wandb_artifact or WANDB_ARTIFACT
+    artifact = wandb.use_artifact(resolved_artifact, type="model")
+    artifact_name = resolved_artifact.rsplit("/", 1)[-1].replace(":", "-")
+    artifact_dir = Path(artifact.download(root=RUN_OUTPUT_DIR / "artifacts" / artifact_name))
 
-    if not candidates:
+    expected_model_file = "best.pth" if MODEL_BACKEND == "ecdet" else "best.pt"
+    model_path = artifact_dir / expected_model_file
+
+    if not model_path.exists():
         raise FileNotFoundError(
-            f"No .pt model file found in downloaded artifact directory: {artifact_dir}"
+            f"Expected model file '{expected_model_file}' not found in downloaded artifact directory: {artifact_dir}"
         )
 
-    model_path = candidates[0]
     print(f"Using model: {model_path}")
 
     return model_path
+
+
+def resolve_ecdet_checkpoint_path(wandb_artifact: str | None = None) -> Path:
+    """Resolve the ECDet checkpoint from W&B or from a local file."""
+    if ECDET_CHECKPOINT_SOURCE == "wandb":
+        return download_model_from_wandb(wandb_artifact)
+
+    if ECDET_CHECKPOINT_SOURCE == "local":
+        if not ECDET_LOCAL_CHECKPOINT_PATH.exists():
+            raise FileNotFoundError(
+                f"Local ECDet checkpoint not found: {ECDET_LOCAL_CHECKPOINT_PATH}"
+            )
+
+        print(f"Using local ECDet checkpoint: {ECDET_LOCAL_CHECKPOINT_PATH}")
+        return ECDET_LOCAL_CHECKPOINT_PATH
+
+    raise ValueError(
+        "Unsupported ECDET_CHECKPOINT_SOURCE value: "
+        f"{ECDET_CHECKPOINT_SOURCE!r}. Expected 'wandb' or 'local'."
+    )
+
+
+def resolve_model_path(wandb_artifact: str | None = None) -> Path:
+    """Resolve the active checkpoint for the configured backend."""
+    if MODEL_BACKEND == "ecdet":
+        return resolve_ecdet_checkpoint_path(wandb_artifact)
+
+    return download_model_from_wandb(wandb_artifact)
+
+
+def print_yolo_model_information(model_path: Path) -> None:
+    """Print available YOLO checkpoint metadata before running inference."""
+    from ultralytics import YOLO
+
+    print("\nYOLO model information:")
+    print(f"W&B artifact: {WANDB_ARTIFACT}")
+    print(f"Checkpoint path: {model_path}")
+
+    model = YOLO(str(model_path))
+    model_module = getattr(model, "model", None)
+    overrides = getattr(model, "overrides", {}) or {}
+    yaml_metadata = getattr(model_module, "yaml", None)
+
+    try:
+        print(f"Task: {getattr(model, 'task', None) or 'unknown'}")
+
+        model_name = (
+            getattr(model_module, "name", None)
+            or overrides.get("model")
+            or getattr(model_module, "yaml_file", None)
+        )
+        if model_name:
+            print(f"Model name: {model_name}")
+
+        if isinstance(yaml_metadata, dict):
+            yaml_file = yaml_metadata.get("yaml_file") or yaml_metadata.get("model")
+            scale = yaml_metadata.get("scale")
+            if yaml_file:
+                print(f"YAML metadata: {yaml_file}")
+            if scale:
+                print(f"Model scale: {scale}")
+
+        names = getattr(model, "names", None)
+        if isinstance(names, dict):
+            print(f"Classes: {len(names)}")
+            print(f"Class names: {names}")
+        elif isinstance(names, list):
+            print(f"Classes: {len(names)}")
+            print(f"Class names: {dict(enumerate(names))}")
+    except Exception as exc:
+        print(f"Warning: Could not extract all YOLO model metadata: {exc}")
+
+    try:
+        model.info(verbose=True)
+    except Exception as exc:
+        print(f"Warning: Could not print Ultralytics model summary: {exc}")
 
 
 # ---------------------------------------------------------------------
@@ -316,7 +600,53 @@ def yolo_labels_to_coco_gt(
 # Direct Prediction (without SAHI)
 # ---------------------------------------------------------------------
 
-def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> Path:
+def collect_image_paths(source_dir: Path) -> list[Path]:
+    image_paths = sorted(
+        list(source_dir.glob("*.jpg"))
+        + list(source_dir.glob("*.jpeg"))
+        + list(source_dir.glob("*.png"))
+    )
+
+    if not image_paths:
+        raise FileNotFoundError(f"No images found in {source_dir}")
+
+    return image_paths
+
+
+def write_test_image_manifest(source_dir: Path, out_path: Path) -> Path:
+    """Write image metadata for SAHI export and filename mapping, without test labels."""
+    images = []
+    for image_id, image_path in enumerate(sorted(collect_image_paths(source_dir)), start=1):
+        with Image.open(image_path) as image:
+            width, height = image.size
+        images.append({
+            "id": image_id,
+            "file_name": image_path.name,
+            "width": width,
+            "height": height,
+        })
+
+    manifest = {
+        "images": images,
+        "categories": [
+            {"id": category_id, "name": name}
+            for name, category_id in CATEGORY_NAME_TO_ID.items()
+        ],
+        "annotations": [],
+    }
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8") as file:
+        json.dump(manifest, file, ensure_ascii=False, indent=2)
+    print(f"Test image manifest: {out_path} ({len(images)} images; no ground-truth labels)")
+    return out_path
+
+
+def run_direct_predict(
+    model_path: Path,
+    source_dir: Path,
+    gt_coco_path: Path,
+    output_dir: Path | None = None,
+) -> Path:
     """
     Führt direkte Inference ohne SAHI durch und konvertiert die Ergebnisse in COCO-Format.
     
@@ -328,7 +658,9 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
     Returns:
         Pfad zur JSON-Datei mit den Vorhersagen in COCO-Format
     """
-    print(f"\nRunning direct YOLO inference without SAHI...")
+    from ultralytics import YOLO
+
+    print("\nRunning direct YOLO inference without SAHI...")
     print(f"Model: {model_path}")
     print(f"Source directory: {source_dir}")
     
@@ -336,15 +668,7 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
     model = YOLO(str(model_path))
     
     # Sammle alle Bilder im Verzeichnis
-    image_paths = sorted(
-        list(source_dir.glob("*.jpg"))
-        + list(source_dir.glob("*.jpeg"))
-        + list(source_dir.glob("*.png"))
-    )
-    
-    if not image_paths:
-        raise FileNotFoundError(f"No images found in {source_dir}")
-    
+    image_paths = collect_image_paths(source_dir)
     print(f"Found {len(image_paths)} images for inference")
 
     # Führe Inference durch und sammle Ergebnisse
@@ -377,8 +701,8 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
                     bbox_w = float(x2 - x1)
                     bbox_h = float(y2 - y1)
                     
-                    # Kategorie-ID (YOLO gibt 0-indizierte IDs zurück, GT ist aber 1-indiziert)
-                    category_id = int(box.cls[0].item()) + 1
+                    raw_category_id = int(box.cls[0].item())
+                    category_id = _to_railbench_category_id(raw_category_id, YOLO_LABEL_INDEXING)
 
                     # Konfidenz-Score
                     confidence = float(box.conf[0].item())
@@ -399,7 +723,9 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
             print(f"  Processed {count}/{len(image_paths)} images...")
     
     # Speichere Vorhersagen in COCO-Format
-    output_dir = OUTPUT_DIR / RUN_NAME
+    if output_dir is None:
+        output_dir = RUN_OUTPUT_DIR
+
     output_dir.mkdir(parents=True, exist_ok=True)
     
     result_path = output_dir / "result.json"
@@ -412,16 +738,263 @@ def run_direct_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -
     return result_path
 
 
+def run_direct_ecdet_predict(
+    model_path: Path,
+    source_dir: Path,
+    gt_coco_path: Path,
+    output_dir: Path | None = None,
+) -> Path:
+    """
+    Runs direct ECDet inference without SAHI and converts results to COCO format.
+    """
+    model, device, transform, model_name = _load_ecdet_model(model_path)
+
+    print("\nRunning direct ECDet inference without SAHI...")
+    print(f"Model: {model_name}")
+    print(f"Checkpoint: {model_path}")
+    print(f"Source directory: {source_dir}")
+
+    image_paths = collect_image_paths(source_dir)
+    print(f"Found {len(image_paths)} images for inference")
+
+    predictions = []
+    annotation_id = 1
+
+    with torch.no_grad():
+        for count, image_path in enumerate(image_paths, 1):
+            file_name = image_path.name
+
+            image = Image.open(image_path).convert("RGB")
+            image_width, image_height = image.size
+            image_tensor = transform(image).unsqueeze(0).to(device)
+            orig_target_sizes = torch.tensor([[image_width, image_height]], device=device)
+
+            outputs = model(image_tensor, orig_target_sizes)
+            output = outputs[0]
+
+            keep = output["scores"] >= CONF_THRESHOLD
+            scores = output["scores"][keep]
+            labels = output["labels"][keep]
+            boxes = output["boxes"][keep]
+
+            for score, label, box in zip(scores, labels, boxes):
+                x_min, y_min, x_max, y_max = box.detach().cpu().tolist()
+                bbox_width = float(x_max - x_min)
+                bbox_height = float(y_max - y_min)
+
+                if bbox_width <= 0 or bbox_height <= 0:
+                    continue
+
+                raw_category_id = int(label.item())
+
+                prediction = {
+                    "file_name": file_name,
+                    "category_id": _ecdet_output_category_id(raw_category_id, label_mode=ECDET_LABEL_INDEXING),
+                    "bbox": [
+                        float(x_min),
+                        float(y_min),
+                        bbox_width,
+                        bbox_height,
+                    ],
+                    "area": bbox_width * bbox_height,
+                    "iscrowd": 0,
+                    "score": float(score.item()),
+                    "id": annotation_id,
+                }
+                predictions.append(prediction)
+                annotation_id += 1
+
+            if count % 10 == 0:
+                print(f"  Processed {count}/{len(image_paths)} images...")
+
+    if output_dir is None:
+        output_dir = RUN_OUTPUT_DIR
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    result_path = output_dir / "result.json"
+
+    with open(result_path, "w", encoding="utf-8") as f:
+        json.dump(predictions, f, indent=2)
+
+    print(f"Saved {len(predictions)} predictions to {result_path}")
+
+    return result_path
+
+
+def _load_ecdet_model(model_path: Path, device: torch.device | None = None) -> tuple[torch.nn.Module, torch.device, T.Compose, str]:
+    """Load ECDet with the same preprocessing and category remapping used for direct inference."""
+    from src import ecdet as ecdet_module
+
+    if device is None:
+        device = torch.device(DEVICE if torch.cuda.is_available() or not DEVICE.startswith("cuda") else "cpu")
+
+    original_read_config = ecdet_module.read_config
+
+    def read_ecdet_config(_config_path: str) -> dict:
+        config = original_read_config(str(ECDET_CONFIG_PATH))
+        use_encoder_idx = config["encoder"]["use_encoder_idx"]
+        config["encoder"]["use_encoder_idx"] = [
+            encoder_idx for encoder_idx in use_encoder_idx if encoder_idx is not None
+        ]
+        return config
+
+    ecdet_module.read_config = read_ecdet_config
+    try:
+        model = ecdet_module.get_model(
+            str(model_path),
+            map_location=str(device),
+        ).to(device)
+    finally:
+        ecdet_module.read_config = original_read_config
+    model.eval()
+
+    # ECDet emits internal labels; the postprocessor maps them back to RailBench category IDs.
+    model.postprocessor.remap_mscoco_category = True
+
+    image_size = model.config["decoder"]["eval_spatial_size"]
+    transform = T.Compose([
+        T.Resize(image_size),
+        T.ToTensor(),
+        T.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225],
+        ),
+    ])
+
+    return model, device, transform, ECDET_CONFIG_PATH.stem
+
+
+def _create_ecdet_sahi_detection_model(model_path: Path, load_at_init: bool = True) -> object:
+    """Create the SAHI adapter only when ECDet sliced inference is requested."""
+    from sahi.models.base import DetectionModel
+
+    class _ECDetSahiDetectionModel(DetectionModel):
+        """SAHI DetectionModel adapter for this project's ECDet wrapper."""
+
+        def load_model(self) -> None:
+            if self.model_path is None:
+                raise ValueError("model_path is required for ECDet SAHI inference.")
+
+            model, device, transform, _ = _load_ecdet_model(Path(self.model_path), self.device)
+            self.device = device
+            self.transform = transform
+            self.set_model(model)
+
+        def set_model(self, model: torch.nn.Module, **kwargs) -> None:
+            self.model = model.to(self.device)
+            self.model.eval()
+
+        def perform_inference(self, image: np.ndarray) -> None:
+            if self.model is None:
+                raise ValueError("Model is not loaded, load it by calling .load_model()")
+
+            pil_image = Image.fromarray(image).convert("RGB")
+            image_width, image_height = pil_image.size
+            image_tensor = self.transform(pil_image).unsqueeze(0).to(self.device)
+            orig_target_sizes = torch.tensor([[image_width, image_height]], device=self.device)
+
+            with torch.no_grad():
+                self._original_predictions = self.model(image_tensor, orig_target_sizes)
+
+        def _create_object_prediction_list_from_original_predictions(
+            self,
+            shift_amount_list: list[list[int]] | None = [[0, 0]],
+            full_shape_list: list[list[int]] | None = None,
+        ) -> None:
+            from sahi.prediction import ObjectPrediction
+            from sahi.utils.compatibility import fix_full_shape_list, fix_shift_amount_list
+
+            shift_amount_list = fix_shift_amount_list(shift_amount_list)
+            full_shape_list = fix_full_shape_list(full_shape_list)
+            object_prediction_list_per_image = []
+
+            for image_ind, output in enumerate(self._original_predictions):
+                shift_amount = shift_amount_list[image_ind]
+                full_shape = None if full_shape_list is None else full_shape_list[image_ind]
+                keep = output["scores"] >= self.confidence_threshold
+                scores = output["scores"][keep]
+                labels = output["labels"][keep]
+                boxes = output["boxes"][keep]
+
+                label_mode = ECDET_LABEL_INDEXING
+
+                object_prediction_list = []
+                for score, label, box in zip(scores, labels, boxes):
+                    x_min, y_min, x_max, y_max = box.detach().cpu().tolist()
+                    bbox = [
+                        max(0.0, float(x_min)),
+                        max(0.0, float(y_min)),
+                        float(x_max),
+                        float(y_max),
+                    ]
+
+                    if full_shape is not None:
+                        bbox[0] = min(float(full_shape[1]), bbox[0])
+                        bbox[1] = min(float(full_shape[0]), bbox[1])
+                        bbox[2] = min(float(full_shape[1]), bbox[2])
+                        bbox[3] = min(float(full_shape[0]), bbox[3])
+
+                    if not bbox[0] < bbox[2] or not bbox[1] < bbox[3]:
+                        continue
+
+                    raw_category_id = int(label.item())
+                    object_prediction_list.append(
+                        ObjectPrediction(
+                            bbox=bbox,
+                            category_id=_ecdet_output_category_id(raw_category_id, label_mode=label_mode),
+                            category_name=_ecdet_category_name(raw_category_id, label_mode=label_mode),
+                            shift_amount=shift_amount,
+                            score=float(score.item()),
+                            full_shape=full_shape,
+                        )
+                    )
+
+                object_prediction_list_per_image.append(object_prediction_list)
+
+            self._object_prediction_list_per_image = object_prediction_list_per_image
+
+    return _ECDetSahiDetectionModel(
+        model_path=str(model_path),
+        device=DEVICE,
+        confidence_threshold=CONF_THRESHOLD,
+        load_at_init=load_at_init,
+    )
+
+
 # ---------------------------------------------------------------------
 # SAHI Prediction
 # ---------------------------------------------------------------------
 
-def run_sahi_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> Path:
+def run_sahi_predict(
+    model_path: Path,
+    source_dir: Path,
+    gt_coco_path: Path,
+    project_dir: Path | None = None,
+    run_name: str | None = None,
+) -> Path:
+    from sahi.predict import predict
+
+    if project_dir is None:
+        project_dir = OUTPUT_DIR
+    if run_name is None:
+        run_name = RUN_NAME
+
+    detection_model = None
+    predict_kwargs = {
+        "model_type": "ultralytics",
+        "model_path": str(model_path),
+        "model_device": DEVICE,
+        "model_confidence_threshold": CONF_THRESHOLD,
+    }
+
+    if MODEL_BACKEND == "ecdet":
+        detection_model = _create_ecdet_sahi_detection_model(model_path)
+        predict_kwargs = {}
+
     result = predict(
-        model_type="ultralytics",
-        model_path=str(model_path),
-        model_device=DEVICE,
-        model_confidence_threshold=CONF_THRESHOLD,
+        detection_model=detection_model,
+        **predict_kwargs,
 
         source=str(source_dir),
 
@@ -436,8 +1009,8 @@ def run_sahi_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> 
 
         dataset_json_path=str(gt_coco_path),
 
-        project=str(OUTPUT_DIR),
-        name=RUN_NAME,
+        project=str(project_dir),
+        name=run_name,
 
         no_standard_prediction=True,
 
@@ -489,6 +1062,133 @@ def run_sahi_predict(model_path: Path, source_dir: Path, gt_coco_path: Path) -> 
     return json_files[0]
 
 
+def _load_prediction_entries(pred_json_path: Path) -> list[dict]:
+    with open(pred_json_path, "r", encoding="utf-8") as f:
+        pred_raw = json.load(f)
+
+    if isinstance(pred_raw, dict):
+        for key in ("predictions", "results", "images", "annotations", "detections"):
+            if key in pred_raw and isinstance(pred_raw[key], list):
+                return pred_raw[key]
+
+        list_vals = [value for value in pred_raw.values() if isinstance(value, list)]
+        return list_vals[0] if list_vals else []
+
+    if isinstance(pred_raw, list):
+        return pred_raw
+
+    raise ValueError(f"Unrecognized prediction JSON structure: {type(pred_raw)}")
+
+
+def merge_hybrid_predictions(
+    direct_predictions_path: Path,
+    sahi_predictions_path: Path,
+    out_path: Path,
+) -> Path:
+    """Merge direct train predictions with SAHI non-train predictions."""
+    direct_predictions = _load_prediction_entries(direct_predictions_path)
+    sahi_predictions = _load_prediction_entries(sahi_predictions_path)
+    train_category_id = CATEGORY_NAME_TO_ID["train"]
+
+    merged_predictions = [
+        prediction
+        for prediction in direct_predictions
+        if int(prediction.get("category_id", -1)) == train_category_id
+    ]
+    merged_predictions.extend(
+        prediction
+        for prediction in sahi_predictions
+        if int(prediction.get("category_id", -1)) != train_category_id
+    )
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(merged_predictions, f, ensure_ascii=False, indent=4)
+
+    print(f"Merged hybrid predictions written to: {out_path}")
+    print(
+        "Direct train predictions kept: "
+        f"{sum(1 for prediction in direct_predictions if int(prediction.get('category_id', -1)) == train_category_id)}"
+    )
+    print(
+        "SAHI non-train predictions kept: "
+        f"{sum(1 for prediction in sahi_predictions if int(prediction.get('category_id', -1)) != train_category_id)}"
+    )
+
+    return out_path
+
+
+def run_hybrid_predict(
+    direct_model_path: Path,
+    sahi_model_path: Path,
+    source_dir: Path,
+    gt_coco_path: Path,
+) -> Path:
+    """Run both inference branches and merge their filtered outputs."""
+    direct_output_dir = build_branch_output_dir(RUN_OUTPUT_DIR, "direct")
+    sahi_output_dir = build_branch_output_dir(RUN_OUTPUT_DIR, "sahi")
+
+    if MODEL_BACKEND == "ecdet":
+        direct_result_path = run_direct_ecdet_predict(
+            model_path=direct_model_path,
+            source_dir=source_dir,
+            gt_coco_path=gt_coco_path,
+            output_dir=direct_output_dir,
+        )
+    else:
+        direct_result_path = run_direct_predict(
+            model_path=direct_model_path,
+            source_dir=source_dir,
+            gt_coco_path=gt_coco_path,
+            output_dir=direct_output_dir,
+        )
+
+    sahi_result_path = run_sahi_predict(
+        model_path=sahi_model_path,
+        source_dir=source_dir,
+        gt_coco_path=gt_coco_path,
+        project_dir=RUN_OUTPUT_DIR,
+        run_name="sahi",
+    )
+
+    direct_predictions_path = save_predictions_coco(
+        direct_result_path,
+        gt_coco_path,
+        direct_output_dir / "pred_test.json",
+        score_threshold=0.2,
+        prediction_label_mode="one_based",
+    )
+
+    sahi_prediction_label_mode = YOLO_LABEL_INDEXING if MODEL_BACKEND == "yolo" else "one_based"
+    sahi_predictions_path = save_predictions_coco(
+        sahi_result_path,
+        gt_coco_path,
+        sahi_output_dir / "pred_test.json",
+        score_threshold=0.2,
+        prediction_label_mode=sahi_prediction_label_mode,
+    )
+
+    return merge_hybrid_predictions(
+        direct_predictions_path=direct_predictions_path,
+        sahi_predictions_path=sahi_predictions_path,
+        out_path=RUN_OUTPUT_DIR / "result.json",
+    )
+
+
+def resolve_hybrid_model_paths() -> tuple[Path, Path]:
+    """Resolve the direct and SAHI checkpoints for the current run."""
+    direct_artifact = DIRECT_WANDB_ARTIFACT or WANDB_ARTIFACT
+    sahi_artifact = SAHI_WANDB_ARTIFACT or WANDB_ARTIFACT
+
+    direct_model_path = resolve_model_path(direct_artifact)
+    if sahi_artifact == direct_artifact:
+        sahi_model_path = direct_model_path
+    else:
+        sahi_model_path = resolve_model_path(sahi_artifact)
+
+    return direct_model_path, sahi_model_path
+
+
 # ---------------------------------------------------------------------
 # Save Predictions (custom test format)
 # ---------------------------------------------------------------------
@@ -502,6 +1202,47 @@ CATEGORY_NAME_TO_ID = {
     "road_vehicle": 6,
     "bicycle": 7,
 }
+
+ECDET_SAHI_CATEGORY_NAMES = tuple(
+    category_name
+    for category_name, category_id in sorted(CATEGORY_NAME_TO_ID.items(), key=lambda item: item[1])
+)
+
+
+def _ecdet_category_name(category_id: int, label_mode: str = "zero_based") -> str:
+    """Resolve class name from ECDet category ids for the configured label indexing."""
+    normalized_category_id = _ecdet_output_category_id(category_id, label_mode=label_mode)
+    return ECDET_SAHI_CATEGORY_NAMES[normalized_category_id - 1]
+
+
+def _validate_label_mode(label_mode: str) -> str:
+    valid_modes = {"zero_based", "one_based"}
+    if label_mode not in valid_modes:
+        raise ValueError(
+            f"Unsupported label mode {label_mode!r}. "
+            "Use 'zero_based' or 'one_based'."
+        )
+    return label_mode
+
+
+def _to_railbench_category_id(category_id: int, label_mode: str) -> int:
+    """Convert configured label indexing to RailBench one-based category ids (1..7)."""
+    label_mode = _validate_label_mode(label_mode)
+    max_category_id = len(ECDET_SAHI_CATEGORY_NAMES)
+
+    if label_mode == "zero_based":
+        if 0 <= category_id < max_category_id:
+            return category_id + 1
+        raise KeyError(category_id)
+
+    if 1 <= category_id <= max_category_id:
+        return category_id
+    raise KeyError(category_id)
+
+
+def _ecdet_output_category_id(category_id: int, label_mode: str = "zero_based") -> int:
+    """Convert ECDet labels to RailBench's one-based category ids."""
+    return _to_railbench_category_id(category_id, label_mode)
 
 
 def _clamp_score(s: float) -> float:
@@ -531,7 +1272,7 @@ def save_predictions_coco(
     gt_coco_path: Path | None,
     out_path: Path,
     score_threshold: float = 0.0,
-    category_id_offset: int | None = None,
+    prediction_label_mode: str = "one_based",
 ) -> Path:
     """
     Lädt ein COCO-artiges Prediction-JSON (Liste von Dicts) und speichert es im gewünschten
@@ -542,56 +1283,22 @@ def save_predictions_coco(
                     Falls None oder nicht existent, wird der Image-Ordner aus config verwendet.
     - out_path: Ausgabepfad (z.B. OUTPUT_DIR / 'pred_test.json')
     - score_threshold: optional, nur Vorhersagen mit score >= threshold werden gespeichert
-    - category_id_offset: optionaler Offset fuer numerische Prediction-IDs.
-                          SAHI/Ultralytics liefert 0..6, RAIL-BENCH erwartet 1..7.
-                          None erkennt 0-basierte IDs automatisch.
+    - prediction_label_mode: erwartetes Label-Indexing im Prediction-JSON
+                             ('zero_based' oder 'one_based').
     """
-    with open(pred_json_path, "r", encoding="utf-8") as f:
-        pred_raw = json.load(f)
-
-    # SAHI/COCO outputs are usually a list; falls ein dict geliefert wird, versuchen wir, die Liste zu extrahieren
-    # TODO can this be removed? (Not reuqired for direct at least)
-    if isinstance(pred_raw, dict):
-        # häufige keys: 'predictions', 'results', 'images', 'annotations'
-        for key in ("predictions", "results", "images", "annotations", "detections"):
-            if key in pred_raw and isinstance(pred_raw[key], list):
-                preds = pred_raw[key]
-                break
-        else:
-            # Fallback: suche Listeneinträge in der dict values
-            list_vals = [v for v in pred_raw.values() if isinstance(v, list)]
-            preds = list_vals[0] if list_vals else []
-    elif isinstance(pred_raw, list):
-        preds = pred_raw
-    else:
-        raise ValueError(f"Unrecognized prediction JSON structure: {type(pred_raw)}")
+    preds = _load_prediction_entries(pred_json_path)
 
     # Lade GT COCO, um image_id -> file_name zu mappen
     image_id_to_name = {}
-    available_file_names = set()
-
     if gt_coco_path is not None and gt_coco_path.exists():
         with open(gt_coco_path, "r", encoding="utf-8") as f:
             gt = json.load(f)
 
         image_id_to_name = {img["id"]: img["file_name"] for img in gt.get("images", [])}
-        available_file_names = {img["file_name"] for img in gt.get("images", [])}
     else:
         raise RuntimeError("Warning: could not resolve image dir from data config")
 
-    raw_category_ids = []
-    for pred in preds:
-        if not isinstance(pred, dict) or "category_id" not in pred:
-            continue
-        try:
-            raw_category_ids.append(int(pred["category_id"]))
-        except (TypeError, ValueError):
-            continue
-
-    if category_id_offset is None:
-        category_id_offset = 1 if raw_category_ids and min(raw_category_ids) == 0 else 0
-    if category_id_offset == 1:
-        print("Detected 0-based prediction category_ids. Mapping them to 1-based RAIL-BENCH category_ids.")
+    prediction_label_mode = _validate_label_mode(prediction_label_mode)
 
     results = []
     for p in preds:
@@ -647,7 +1354,7 @@ def save_predictions_coco(
         # final: falls noch nicht int, versuche zu casten
         cat_id = int(cat_id)
         if cat_id_is_numeric_prediction:
-            cat_id += category_id_offset
+            cat_id = _to_railbench_category_id(cat_id, prediction_label_mode)
 
         # bbox
         bbox = p.get("bbox") or p.get("box") or p.get("bounding_box")
@@ -778,7 +1485,7 @@ def fix_predictions_category_ids(pred_json_path: Path, gt_json_path: Path) -> Pa
         pred_cat_ids = {p.get("category_id") for p in pred_data if isinstance(p, dict) and "category_id" in p}
         
         if not pred_cat_ids:
-            print(f"  ⚠️  Keine category_ids in Predictions gefunden")
+            print("  ⚠️  Keine category_ids in Predictions gefunden")
             return pred_json_path
         
         # Bestimme den erforderlichen Offset
@@ -807,14 +1514,14 @@ def fix_predictions_category_ids(pred_json_path: Path, gt_json_path: Path) -> Pa
         elif pred_min == gt_min and pred_cat_ids != gt_category_ids:
             # Überprüfe ob es nur eine Subset-Issue ist (z.B. nicht alle Kategorien sind vorhanden)
             if pred_cat_ids <= gt_category_ids:
-                print(f"  ℹ️  Predictions sind eine Subset von GT (nicht alle Kategorien vorhanden)")
+                print("  ℹ️  Predictions sind eine Subset von GT (nicht alle Kategorien vorhanden)")
                 needs_shift = False
             else:
                 # Predictions haben Kategorien die nicht in GT sind
                 print(f"  ⚠️  Predictions haben Kategorien die nicht in GT sind: {pred_cat_ids - gt_category_ids}")
                 needs_shift = False
         else:
-            print(f"  ℹ️  Keine Anpassung nötig")
+            print("  ℹ️  Keine Anpassung nötig")
         
         if needs_shift:
             # Verschiebe alle category_ids um +offset
@@ -875,36 +1582,120 @@ def evaluate_coco(gt_json_path: Path, pred_json_path: Path) -> dict:
 # Main
 # ---------------------------------------------------------------------
 
-def main():
-    print(f"Run name: {RUN_NAME}")
-    print(f"Using {'SAHI' if USE_SAHI else 'direct'} inference method")
+def main(argv: list[str] | None = None) -> None:
+    """Run inference and export predictions, evaluating only the validation split."""
+    global SPLIT
+    global ECDET_CONFIG_PATH, OUTPUT_DIR, POSTPROCESS_MATCH_THRESHOLD, RUN_NAME, RUN_OUTPUT_DIR, USE_HYBRID, USE_SAHI, DIRECT_WANDB_ARTIFACT, SAHI_WANDB_ARTIFACT
+    args = parse_args(
+        argv,
+        default_postprocess_match_threshold=POSTPROCESS_MATCH_THRESHOLD,
+        default_output_root=OUTPUT_DIR,
+        default_ecdet_config_path=ECDET_CONFIG_PATH,
+        default_use_sahi=USE_SAHI,
+    )
+    SPLIT = args.split
+    OUTPUT_DIR = args.output_root
+    ECDET_CONFIG_PATH = args.ecdet_config_path
+    POSTPROCESS_MATCH_THRESHOLD = args.postprocess_match_threshold
+    USE_HYBRID = args.hybrid_inference
+    USE_SAHI = args.use_sahi
+    DIRECT_WANDB_ARTIFACT = args.direct_wandb_artifact
+    SAHI_WANDB_ARTIFACT = args.sahi_wandb_artifact
+    run_id = build_run_id(args.run_id)
+    base_run_name = build_run_name(
+        MODEL_BACKEND,
+        SPLIT,
+        USE_HYBRID,
+        USE_SAHI,
+        SLICE_WIDTH,
+        SLICE_HEIGHT,
+        CONF_THRESHOLD,
+        OVERLAP_WIDTH_RATIO,
+        POSTPROCESS_MATCH_THRESHOLD,
+    )
+    artifact_run_suffix = build_artifact_run_suffix(DIRECT_WANDB_ARTIFACT, SAHI_WANDB_ARTIFACT)
+    if artifact_run_suffix:
+        base_run_name = f"{base_run_name}_{artifact_run_suffix}"
+    RUN_NAME = build_unique_run_name(base_run_name, run_id)
+    RUN_OUTPUT_DIR = build_run_output_dir(OUTPUT_DIR, RUN_NAME)
 
-    model_path = download_model_from_wandb()
+    print(f"Run name: {RUN_NAME}")
+    print(f"Run id: {run_id}")
+    print(f"Output dir: {RUN_OUTPUT_DIR}")
+    inference_mode = "hybrid" if USE_HYBRID else ("SAHI" if USE_SAHI else "direct")
+    print(f"Using {MODEL_BACKEND} backend with {inference_mode} inference method")
+    print(f"Direct W&B artifact: {DIRECT_WANDB_ARTIFACT or WANDB_ARTIFACT}")
+    print(f"SAHI W&B artifact: {SAHI_WANDB_ARTIFACT or WANDB_ARTIFACT}")
+
+    if MODEL_BACKEND not in {"yolo", "ecdet"}:
+        raise ValueError(f"Unsupported MODEL_BACKEND: {MODEL_BACKEND}")
+
+    _validate_label_mode(YOLO_LABEL_INDEXING)
+    _validate_label_mode(ECDET_LABEL_INDEXING)
+
+    if MODEL_BACKEND == "ecdet" and not ECDET_WANDB_ARTIFACT:
+        raise ValueError("Set ECDET_WANDB_ARTIFACT to the W&B artifact path for the trained ECDet checkpoint.")
+
+    if MODEL_BACKEND == "ecdet":
+        if USE_HYBRID:
+            direct_model_path, sahi_model_path = resolve_hybrid_model_paths()
+        elif USE_SAHI:
+            sahi_model_path = resolve_ecdet_checkpoint_path(SAHI_WANDB_ARTIFACT)
+            direct_model_path = sahi_model_path
+        else:
+            direct_model_path = resolve_ecdet_checkpoint_path(DIRECT_WANDB_ARTIFACT)
+            sahi_model_path = direct_model_path
+    else:
+        if USE_HYBRID:
+            direct_model_path, sahi_model_path = resolve_hybrid_model_paths()
+        elif USE_SAHI:
+            sahi_model_path = resolve_model_path(SAHI_WANDB_ARTIFACT)
+            direct_model_path = sahi_model_path
+        else:
+            direct_model_path = resolve_model_path(DIRECT_WANDB_ARTIFACT)
+            sahi_model_path = direct_model_path
+
+    if MODEL_BACKEND == "yolo":
+        print_yolo_model_information(sahi_model_path if USE_SAHI else direct_model_path)
 
     source_dir = resolve_split_image_dir(DATA_CONFIG_PATH, SPLIT)
-    gt_coco_path = DEFAULT_GT_COCO_PATH
+    if SPLIT == "test":
+        # Existing SAHI/export helpers need image IDs, not ground-truth annotations.
+        gt_coco_path = write_test_image_manifest(source_dir, RUN_OUTPUT_DIR / "test_images.json")
+    else:
+        gt_coco_path = DEFAULT_GT_COCO_PATH
+        if not gt_coco_path.exists():
+            raise FileNotFoundError(f"Ground-truth COCO file not found: {gt_coco_path}")
 
-    if not gt_coco_path.exists():
-        raise FileNotFoundError(f"Ground-truth COCO file not found: {gt_coco_path}")
-
-    # Stelle sicher, dass die Ground Truth 1-indizierte Kategorien hat (statt 0-indiziert von YOLO)
-    # Dies macht sie konsistent mit den YOLO/SAHI-Vorhersagen nach unserem Offset
-    try:
-        print("\nAnpassung der Ground-Truth-Kategorien (0-6 -> 1-7)...")
-        fix_gt_category_ids(gt_coco_path, category_id_offset=1)
-    except Exception as e:
-        print(f"Warning: Could not fix GT category IDs: {e}")
+        try:
+            print("\nAnpassung der Ground-Truth-Kategorien (0-6 -> 1-7)...")
+            fix_gt_category_ids(gt_coco_path, category_id_offset=1)
+        except Exception as e:
+            print(f"Warning: Could not fix GT category IDs: {e}")
 
     # Wähle zwischen SAHI und direkter Inference
-    if USE_SAHI:
+    if USE_HYBRID:
+        pred_json_path = run_hybrid_predict(
+            direct_model_path=direct_model_path,
+            sahi_model_path=sahi_model_path,
+            source_dir=source_dir,
+            gt_coco_path=gt_coco_path,
+        )
+    elif USE_SAHI:
         pred_json_path = run_sahi_predict(
-            model_path=model_path,
+            model_path=sahi_model_path,
+            source_dir=source_dir,
+            gt_coco_path=gt_coco_path,
+        )
+    elif MODEL_BACKEND == "ecdet":
+        pred_json_path = run_direct_ecdet_predict(
+            model_path=direct_model_path,
             source_dir=source_dir,
             gt_coco_path=gt_coco_path,
         )
     else:
         pred_json_path = run_direct_predict(
-            model_path=model_path,
+            model_path=direct_model_path,
             source_dir=source_dir,
             gt_coco_path=gt_coco_path,
         )
@@ -912,21 +1703,38 @@ def main():
     pred_test_path = None
 
     try:
-        pred_test_path = OUTPUT_DIR / "pred_test.json"
+        pred_test_path = RUN_OUTPUT_DIR / "pred_test.json"
+        if USE_HYBRID:
+            prediction_label_mode_for_export = "one_based"
+        elif USE_SAHI and MODEL_BACKEND == "yolo":
+            # SAHI/Ultralytics JSON may preserve the model's raw class indexing.
+            prediction_label_mode_for_export = YOLO_LABEL_INDEXING
+        else:
+            prediction_label_mode_for_export = "one_based"
+
         save_predictions_coco(
             pred_json_path,
             gt_coco_path,
             pred_test_path,
             score_threshold=0.2,
-            category_id_offset=1 if USE_SAHI else 0,
+            prediction_label_mode=prediction_label_mode_for_export,
         )
     except Exception as e:
+        if SPLIT == "test":
+            raise
         print(f"Warning: failed to write normalized pred_test.json: {e}")
 
-    inspect_category_ids(
-        gt_json_path=gt_coco_path,
-        pred_json_path=pred_json_path,
-    )
+    eval_pred_path = pred_test_path if pred_test_path is not None and pred_test_path.exists() else pred_json_path
+    if SPLIT == "test":
+        submission_path = PROJECT_ROOT / "pred_test.json"
+        shutil.copyfile(eval_pred_path, submission_path)
+        print(f"Test predictions exported to: {submission_path}")
+    else:
+        print(f"\nInspecting category IDs for evaluation predictions: {eval_pred_path}")
+        inspect_category_ids(
+            gt_json_path=gt_coco_path,
+            pred_json_path=eval_pred_path,
+        )
 
    # metrics = evaluate_coco(
    #     gt_json_path=gt_coco_path,
@@ -939,28 +1747,39 @@ def main():
 
     #wandb.log(metrics)
 
+    init_wandb_run()
+
     eval_artifact = wandb.Artifact(
-        name=f"{RUN_NAME}_eval_files",
+        name=f"{MODEL_BACKEND}_{inference_mode.lower()}_{wandb.run.id}_eval_files",
         type="evaluation",
-        description=f"{'SAHI' if USE_SAHI else 'Direct'} predictions and existing COCO ground-truth for evaluation.",
+        description=(
+            f"{inference_mode} test predictions without ground-truth labels."
+            if SPLIT == "test"
+            else f"{inference_mode} predictions and existing COCO ground-truth for evaluation."
+        ),
     )
-    eval_artifact.add_file(str(gt_coco_path))
-    eval_artifact.add_file(str(pred_json_path))
-    try:
-        if pred_test_path is not None and pred_test_path.exists():
-            eval_artifact.add_file(str(pred_test_path))
-    except Exception:
-        pass
+
+    if SPLIT != "test":
+        eval_artifact.add_file(str(gt_coco_path))
+    eval_artifact.add_file(str(eval_pred_path))
     wandb.log_artifact(eval_artifact)
 
     wandb.finish()
 
-    benchmark_calculator = BenchmarkCalculator(test_pipeline=TEST_PIPELINE)
+    if SPLIT == "test":
+        return
+
+    benchmark_calculator = BenchmarkCalculator(
+        test_pipeline=TEST_PIPELINE,
+        project_root=PROJECT_ROOT,
+        gt_path=gt_coco_path,
+        pred_path=eval_pred_path,
+    )
     benchmark_calculator.run_railbench_format_check(is_railbench_test=False)
     benchmark_calculator.prepare_and_run_object_eval(
         split="val",
         detector_name=RUN_NAME,
-        project_name="eric-toudik-railbench",
+        project_name=RUN_NAME,
     )
 
 if __name__ == "__main__":

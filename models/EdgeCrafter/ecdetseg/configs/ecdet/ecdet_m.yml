@@ -1,5 +1,5 @@
 __include__: [
-  '../dataset/coco.yml',
+  '../dataset/custom.yml',
   'ecdet.yml',
 ]
 
@@ -52,7 +52,7 @@ optimizer:
   betas: [0.9, 0.999]
   weight_decay: 0.0001
 
-epochs: 62 
+epochs: 99
 warmup_iter: 2000
 lr_gamma: 0.5
 
@@ -64,10 +64,10 @@ train_dataloader:
     transforms:
       mosaic_epoch: 30
       mosaic_prob: 0.75
-      stop_epoch: 60
+      stop_epoch: 90
 
   collate_fn:
     mixup_prob: 0.75
-    mixup_epoch: 30
+    mixup_epoch: 20
 
 
