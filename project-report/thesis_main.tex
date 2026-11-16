@@ -32,6 +32,9 @@
   \fi
 \fi
 
+\usepackage[figuresright]{rotating}
+\usepackage{tabularx}
+
 %Load additional packages
 \usepackage{lmedoc/packages}
 % put in this file your abbreviations
@@ -49,6 +52,14 @@
 \newcommand{\@onedot}{\ifx\@let@token.\else.\null\fi\xspace}
 \makeatother
 
+\usepackage{cleveref}
+\hypersetup{
+    urlcolor=blue!60!black
+}
+
+\makeatletter
+\setlength{\@fptop}{0pt}
+\makeatother
 
 
 % Sets the bib file
@@ -66,13 +77,13 @@
 \newcommand{\ReportMembers}{%
   \begin{tabular}{@{}lll@{}}
     \textbf{Forename} & \textbf{Surname} & \textbf{Student number} \\
-    Forename 1 & Surname 1 & Student number 1 \\
-    Forename 2 & Surname 2 & Student number 2 \\
+    Toudik & Isavi Arktan & 23481317 \\
+    Eric & Walsh & 23455948 \\
   \end{tabular}%
 }
 \newcommand{\ReportAdvisor}{Dr.-Ing. Vincent Christlein}
 \newcommand{\ReportStart}{15.04.2026}
-\newcommand{\ReportEnd}{End}
+\newcommand{\ReportEnd}{16.11.2026}
 
 \makeatletter
 \def\enddeckblatt{%
@@ -106,7 +117,7 @@
   Angefertigt am
 \fi
 \\[5mm]
-Lehrstuhl f"ur Mustererkennung (Informatik 5)\\
+Lehrstuhl f\"ur Mustererkennung (Informatik 5) \\
 Department Informatik \\
 Friedrich-Alexander-Universit"at Erlangen-N"urnberg.\\[5mm]
 \@ifundefined{ZweitInstitut}{}{%
@@ -151,37 +162,35 @@ Friedrich-Alexander-Universit"at Erlangen-N"urnberg.\\[5mm]
 \cleardoublepage
 % Only necessary for thesis
 
-Ich versichere, dass ich die Arbeit ohne fremde Hilfe und ohne Benutzung
-anderer als der angegebenen Quellen angefertigt habe und dass die Arbeit
-in gleicher oder "ahnlicher Form noch keiner anderen Pr"ufungsbeh"orde
-vorgelegen hat und von dieser als Teil einer Pr"ufungsleistung
-angenommen wurde. Alle Ausf"uhrungen, die w"ortlich oder sinngem"a"s
-"ubernommen wurden, sind als solche gekennzeichnet.
-\\
+%Ich versichere, dass ich die Arbeit ohne fremde Hilfe und ohne Benutzung
+%anderer als der angegebenen Quellen angefertigt habe und dass die Arbeit
+%in gleicher oder "ahnlicher Form noch keiner anderen Pr"ufungsbeh"orde
+%vorgelegen hat und von dieser als Teil einer Pr"ufungsleistung
+%angenommen wurde. Alle Ausf"uhrungen, die w"ortlich oder sinngem"a"s
+%"ubernommen wurden, sind als solche gekennzeichnet.
+
+%\cleardoublepage
 
 
-\cleardoublepage
-
-
-\begin{center}
-\bfseries
+%\begin{center}
+%\bfseries
 % Abstract in German
-{\selectlanguage{german}"Ubersicht"}
-\normalfont
-\end{center}
+%{\selectlanguage{german}Übersicht}
+%\normalfont
+%\end{center}
 
 
-\vspace{5.0cm}
+%\vspace{5.0cm}
 
-\begin{center}
-\bfseries
+%\begin{center}
+%\bfseries
 % Abstract in English
-{\selectlanguage{english}Abstract}
-\normalfont
-\end{center}
+%{\selectlanguage{english}Abstract}
+%\normalfont
+%\end{center}
 
 
-\cleardoublepage
+%\cleardoublepage
 
 \tableofcontents
 

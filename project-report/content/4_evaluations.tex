@@ -2,13 +2,181 @@
 \label{ch:evaluations}
 
 \section{Dataset}
-The exploratory data analysis in the repository reports good data quality: there are no missing values, no NaNs, and no invalid bounding boxes. Most validation and test images are high-resolution, especially 3840\,$\times$\,2160 and 4112\,$\times$\,2504. The annotations are class-imbalanced, with \texttt{catenary\_pole} as the most frequent class and \texttt{train} and \texttt{bicycle} among the rarest classes. The bounding boxes are mostly small relative to the image size, show a strong height-to-width imbalance, and the data also contains occlusions and varying weather conditions.
+\label{sec:dataset}
+For training and validation, the RAIL-BENCH dataset as described in \cref{ch:introduction} is being used. An example image with ground-truth annotations is shown
+in \autoref{fig:dataset_example}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{content/figures/dataset_example.png}
+    \caption{Example image from the RAIL-BENCH validation set with
+ground-truth bounding boxes}
+    \label{fig:dataset_example}
+\end{figure}
+
+Our exploratory data analysis indicates good data quality: the annotations did not contain any empty bounding boxes or boxes located outside the frame. The dataset consists of high-resolution images, with 3840x2160 and 4112x2504 being the most common image sizes. 
+The bounding box sizes show significant differences between classes. As shown in \cref{fig:bounding_box_size_distribution}, bounding boxes for trains have a median size of 0.48\% of the image, while  signal poles only have a median size of around 0.005\% of the containing image. 
+
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{content/figures/bounding_box_size_by_class.png}
+    \caption{Distribution of bounding box sizes relative to the images (logarithmic scale). Training and validation set combined}
+    \label{fig:bounding_box_size_distribution}
+\end{figure}
+
+The class frequency is similar between the training and validation sets. Catenary poles make up the majority of annotations (44.1\% in the training set), followed by persons (15.7\%). 
+The least common classes are train and bicycle, which account for 3.2\% and 1.3\% of the annotations, respectively. The class distributions are shown in \cref{fig:class_distribution}. 
+In addition, each bounding box contains an occlusion level ranging from 0 (no occlusion) to 4 (heavy occlusion). Most infrastructure objects are fully visible, while road vehicles are more frequently occluded (see \cref{fig:occlusions} in the Appendix).
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{content/figures/class_distribution.png}
+    \caption{Class distribution in training and validation set}
+    \label{fig:class_distribution}
+\end{figure}
+
 
 \section{Metrics}
-The experiment logs report average precision and recall-based metrics, including AP, AP50, AP75, APeasy, APmoderate, APhard, and the corresponding AR measures. For class-wise analysis, the logs also list AP values for individual classes across IoU thresholds from 0.50 to 0.95.
+\label{sec:meetrics}
+As metric for the evaluation of the experiments, an adapted version proposed by \citeauthor*{railbench-object-paper} is used.
+It is based on the AP from the COCO detection challenge and computed over a set of \acrshort{iou} thresholds. 
+Based on the size and occlusion of the bounding boxes, each annotation is assigned to one of three difficulty levels: easy, moderate, or hard.
+The primary evaluation metric of the challenge is AP hard, which considers all ground-truth bounding boxes, including those classified as easy or moderate.
+All metrics are calculated using the RAIL-BENCH toolkit \cite{railbench-object-paper}.
 
 \section{Experimental Protocol}
-All documented model runs use the same train/validation split and evaluate on the validation set with the RailBench Toolkit. This makes the runs directly comparable within the repository. The notes also distinguish between direct inference, SAHI inference, and a hybrid setup that merges predictions from both pipelines.
+All experiments were evaluated on the RAIL-BENCH validation set using the RAIL-BENCH toolkit. The original training and validation split was maintained throughout all experiments. 
+As the primary metric for comparing model performance, we used AP hard, as described in \cref{sec:meetrics}. 
+
+\subsection{YOLO11 Baseline and Sliced Inference}
+
+As a baseline, we used a \acrshort{yolo}11s model. The pretrained model was fine-tuned on the original training dataset without additional data augmentation. Furthermore, we conducted training runs with basic data augmentations such as \acrfull{hsv} transformations, scaling, and horizontal flipping. We also investigated additional augmentations, such as motion blur, to address challenging railway conditions. These experiments served as a reference to investigate whether conventional data augmentation was sufficient to improve detection performance.
+
+As the exploratory data analysis in \cref{sec:dataset} indicated that some objects were tiny relative to the image dimensions, we investigated the impact of image slicing on detection performance. Initially, we applied \acrshort{sahi} only during inference to investigate the effect of sliced inference without modifying model training.
+
+Since catenary poles and signal poles have a vertical shape, we assumed that vertical slicing  would yield better results and tested this assumption in our experiments. 
+Subsequently, we fine-tuned \acrshort{yolo}11s models on sliced training images and compared direct inference with \acrshort{sahi}-based inference. To analyze the impact of model capacity, we extended the experiments to \acrshort{yolo}11m and \acrshort{yolo}11l.
+
+\subsection{ECDet Experiments}
+
+Next, we investigated EdgeCrafter-based ECDet models as an alternative to \acrshort{yolo}11 by fine-tuning pretrained ECDet-M and ECDet-L models on the railway dataset. We reused our \acrshort{sahi} approach for both training and inference. In addition, we investigated the impact of input resolution, comparing 640 $\times$ 640 (default) and 1024 $\times$ 1024 pixels.
+
+Due to the class imbalance identified during the exploratory data analysis in \cref{sec:dataset}, we applied an oversampling strategy to the training set. We evaluated experiments with and without oversampling, distinguishing between direct and sliced inference.
+
+\subsection{Postprocessing and Hybrid Inference}
+
+To investigate the effect of postprocessing on predictions generated from overlapping image slices, we evaluated different \acrshort{iou} thresholds for \acrfull{nms}, which suppresses overlapping detections of the same object. We examined the trade-off between removing duplicate detections and retaining valid predictions using thresholds of 0.3, 0.5, 0.7, and 0.9.
+
+We observed class-specific performance differences between models trained on full and sliced images, using both direct and \acrshort{sahi}-based inference. Based on these findings, we developed a class-specific hybrid inference strategy and evaluated it against the individual approaches.
+
+Finally, we applied the hybrid strategy to the test set and submitted the results to the
+\href{https://www.codabench.org/competitions/15442/}
+{RAIL-BENCH Object Detection Challenge}.
+
+
+
+
 
 \section{Results}
-The reported results show that augmentation and inference strategy matter for this benchmark. In the YOLO experiments, the no-augmentation baseline reaches AP 0.1460, while the blur-augmentation run improves to AP 0.1696. For EdgeCrafter, the hybrid direct-plus-SAHI configuration achieves AP 0.2968 and AP50 0.5429 on the validation set. Taken together, the results suggest that the benchmark is sensitive to small objects and class imbalance, and that SAHI-based or hybrid inference strategies can be beneficial.
+In this section, we present and discuss the most relevant results of our experiments. An  overview of the experimental configurations and their evaluation results is provided in Appendix \ref{app:additional-results}.
+\subsection{\acrshort{yolo}11 Baseline and Sliced Inference}
+The initial \acrshort{yolo}11s baseline achieved an AP hard of 14.60\%. Using basic augmentation improved performance to 17.28\%. Additional blur and motion blur augmentations did not provide further improvements but instead led to a slight decrease in AP. Therefore, these augmentations were not used in subsequent experiments. Applying \acrshort{sahi} only during inference showed varying results depending on the slicing configuration (see \cref{tab:sahi_slice_dimensions}).
+
+
+
+
+
+The best result was achieved with slices of 768 $\times$ 2048 pixels, reaching 19.41\% AP hard. Compared with square slices of 1024 $\times$ 1024 pixels, this configuration particularly improved the detection of catenary poles (+4.45 percentage points) and signal poles (+0.88 percentage points). One possible explanation is that taller slices reduce object fragmentation at slice boundaries. However, the shorter vertical configuration of 768 $\times$ 1536 pixels performed worse than square slicing, suggesting that the improvement cannot be attributed to slice orientation alone.
+
+In addition, training \acrshort{yolo}11s on sliced images further improved AP hard to 21.28\% using \acrshort{sahi} inference. Increasing model capacity led to further improvements, with slice-trained \acrshort{yolo}11m and \acrshort{yolo}11l achieving 23.37\% and 23.73\% AP hard, respectively. For \acrshort{yolo}11m, \acrshort{sahi} inference also outperformed direct inference (20.40\%). These results suggest that both sliced training and increased model capacity contribute to improved detection performance.
+
+\subsection{ECDet Experiments}
+ECDet-M at a resolution of 640 pixels, trained on sliced images with oversampling, achieved 24.69\% AP hard with \acrshort{sahi} inference. Using ECDet-L with the same training and inference configuration improved the result to 26.37\%. Removing oversampling further improved performance to 27.26\%. These results show that the benefits of sliced training combined with \acrshort{sahi} inference are not limited to \acrshort{yolo}11.
+
+Using ECDet-L at a resolution of 1024 pixels, direct inference on a model trained on full images achieved 27.64\% AP hard. Training on sliced images and using \acrshort{sahi} inference improved performance to 31.86\%, outperforming the best \acrshort{yolo}11 model by 8.13 percentage points.
+
+Due to the class imbalance identified in \cref{sec:dataset}, we also evaluated the effect of oversampling on ECDet-L. However, oversampling did not improve overall detection performance in the tested configurations. At a resolution of 1024 pixels, AP hard decreased from 27.64\% to 26.90\% using direct inference, while slice-trained ECDet-L with \acrshort{sahi} inference showed a decrease from 31.86\% to 31.23\%. Per-class performance showed mixed effects, including improvements and declines for underrepresented classes. This may be attributed to the simple oversampling strategy, which duplicates full images with all included labels rather than selectively oversampling individual objects.
+
+\subsection{Postprocessing and Hybrid Inference}
+An NMS IoU threshold of 0.7 achieved the highest detection performance among the tested thresholds for the ECDet-L model trained with sliced images and oversampling. Increasing the threshold from 0.3 to 0.7 improved AP hard from 26.03\% to 26.72\%, while a further increase to 0.9 reduced performance to 24.23\% (see \cref{tab:nms_threshold} in the appendix). 
+Average Recall with a maximum of 100 detections per image (AR100)  increased from 35.98\% at a threshold of 0.3 to 42.64\% at 0.9, illustrating the trade-off between retaining predictions and suppressing duplicates.
+
+The ECDet-L models at resolution 1024 exhibited substantial differences in class-specific detection performance. For trains, the full-image model with direct inference (62.05\% AP50) substantially outperformed the slice-trained model with \acrshort{sahi} inference (24.88\% AP50). The slice-trained model with \acrshort{sahi} inference, on the other hand, performed better for infrastructure classes such as catenary poles, signal poles, and signals, as shown in \cref{tab:class_specific_sahi}. Smaller improvements were observed for persons and bicycles, while road vehicles performed better with the full-image model and direct inference. These results suggest that the combination of sliced training and \acrshort{sahi} inference benefits smaller infrastructure objects, while full-image training and direct inference are more suitable for larger objects.
+
+\begin{table}[t]
+    \centering
+            \caption{Class-specific AP50 comparison between direct and \acrshort{sahi} inference for ECDet-L at resolution 1024.}
+    \label{tab:class_specific_sahi}
+
+    \begin{tabular}{lccc}
+        \hline
+        \textbf{Class} &\textbf{Full/direct (\%)} & \textbf{Sliced/\acrshort{sahi} (\%)} & \textbf{$\Delta$ (pp)} \\
+        \hline
+        Catenary pole & 59.16 & \textbf{84.47} & +25.31 \\
+        Signal pole   & 28.95 & \textbf{63.59} & +34.64 \\
+        Signal        & 46.63 & \textbf{67.96} & +21.33 \\
+        Person        & 64.32 & \textbf{70.86} & +6.54 \\
+        Bicycle       & 37.44 & \textbf{43.57} & +6.13 \\
+        Road vehicle  & \textbf{59.02} & 49.82 & -9.20 \\
+        Train         & \textbf{62.05} & 24.88 & -37.17 \\
+        \hline
+    \end{tabular}
+
+\end{table}
+
+Hybrid inference achieved the highest overall detection performance (36.02\% AP hard) among all evaluated configurations. As shown in \cref{tab:hybrid_comparison}, it outperformed direct inference by 8.38 percentage points and \acrshort{sahi}-only inference by 4.16 percentage points. By retaining train predictions from the direct model and predictions for the remaining six classes from the \acrshort{sahi} model, the hybrid approach combined the strengths of both strategies.
+
+
+However, the class-selection strategy was not optimal for every class, as direct inference also performed better for road vehicles. Including additional classes in the direct-inference branch could potentially further improve performance.
+
+\begin{table}[t]
+    \centering
+            \caption{Comparison of direct, \acrshort{sahi}, and hybrid inference
+    using ECDet-L at resolution 1024. All values are percentages.}
+    \label{tab:hybrid_comparison}
+
+    \begin{tabular}{lccccc}
+        \hline
+        \textbf{Inference} &
+        \textbf{AP hard} &
+        \textbf{AP50} &
+        \textbf{AP75} &
+        \textbf{AP easy} &
+        \textbf{AP moderate} \\
+        \hline
+        Direct & 27.64 & 51.08 & 25.79 & 47.54 & 36.87 \\
+        \acrshort{sahi}   & 31.86 & 57.88 & 30.44 & 45.97 & 39.69 \\
+        Hybrid & \textbf{36.02} & \textbf{63.19} &
+                 \textbf{35.12} & \textbf{52.81} & \textbf{44.70} \\
+        \hline
+    \end{tabular}
+
+\end{table}
+
+\subsection{RAIL-BENCH Challenge Submission}
+
+For our submission we used the official RAIL-BENCH toolkit \cite{railbench-object-detection-page} \cite{padilla2021comparative}. We achieved first place among three submissions on the \href{https://www.codabench.org/competitions/15442/}{RAIL-BENCH Object Detection Challenge leaderboard}, as of November 12, 2026. 
+We outperformed the second-ranked submission (22.19\% AP hard) by 12.00 percentage points, as shown in \cref{tab:test_leaderboard}. Since the challenge is open-ended, this ranking represents the leaderboard at the time of submission.
+Our test performance (34.19\% AP hard) was slightly lower than the best validation result (36.02\%). This relatively small difference suggests that the approach maintained much of its validation performance on previously unseen images.
+
+\begin{table}[t]
+    \centering
+            \caption{RAIL-BENCH Object Detection test-set leaderboard
+    results as of November 12, 2026. All values are percentages.}
+    \label{tab:test_leaderboard}
+
+    \begin{tabular}{lccc}
+        \hline
+        \textbf{Submission} &
+        \textbf{mAP hard} &
+        \textbf{mAP moderate} &
+        \textbf{mAP easy} \\
+        \hline
+        Ours & \textbf{34.19} & \textbf{44.75} & \textbf{52.74} \\
+        junfeng2 & 22.19 & 29.43 & 35.05 \\
+        annikabaetz & 16.72 & 25.55 & 35.12 \\
+        \hline
+    \end{tabular}
+
+\end{table}
