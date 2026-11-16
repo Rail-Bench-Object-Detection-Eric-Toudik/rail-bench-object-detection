@@ -1,6 +1,229 @@
-% add your abbreviations here
-\newabbreviation{svm}{SVM}{Support Vector Machine}
-\newabbreviation{ato}{ATO}{Automatic Train Operation}
-\newabbreviation{kit}{KIT}{Karlsruhe Institute of Technology}
-\newabbreviation{iou}{IoU}{Intersection over Union}
-\newabbreviation{map}{mAP}{mean Average Precision}
+\appendix
+
+\chapter{Supplementary Results}
+\label{app:appendix}
+
+\section{Additional Dataset Analysis}
+\label{app:additional-explor-results}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{content/figures/image_size_distribution.png}
+    \caption{Distribution of image sizes in the dataset.}
+    \label{fig:image_size_distribution}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=1\textwidth]{content/figures/occlusion_by_class_and_split.png}
+    \caption{Occlusions by class}
+    \label{fig:occlusions}
+\end{figure}
+
+
+\section{Additional experiment results}
+\label{app:additional-results}
+
+
+\begin{table}[t]
+    \centering
+    \caption{Impact of the NMS IoU threshold on detection performance.}
+    \label{tab:nms_threshold}
+    \begin{tabular}{cc}
+        \hline
+        \textbf{NMS IoU Threshold} & \textbf{AP hard (\%)} \\
+        \hline
+        0.3 & 26.03 \\
+        0.5 & 26.37 \\
+        0.7 & \textbf{26.72} \\
+        0.9 & 24.23 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+
+\begin{table}[t]
+    \centering
+            \caption{Impact of SAHI slice dimensions on YOLO11s performance.}
+    \label{tab:sahi_slice_dimensions}
+
+    \begin{tabular}{l c}
+        \hline
+        \textbf{Slice dimensions (W $\times$ H)} & \textbf{AP hard (\%)} \\
+        \hline
+        768 $\times$ 1536  & 15.28 \\
+        1024 $\times$ 1024 & 18.70 \\
+        768 $\times$ 2048  & \textbf{19.41} \\
+        \hline
+    \end{tabular}
+
+\end{table}
+
+\begin{sidewaystable}
+\centering
+\begin{tabular}{llllllll}
+\toprule
+        Model & Training strategy (WxH) & Inference (W x H) & Resolution & max. epochs & AP hard & AP50 & AP75  \\ 
+        yolo11s & No augmentation & direct & 1024 & 300 & 0.1460 & 0.2852 & 0.1293  \\ 
+        yolo11s & basic augmentation + blur & direct & 1024 & 300 & 0.1696 & 0.3224 & 0.1574  \\ 
+        yolo11s & basic augmentation & direct & 1024 & 300 & 0.1728 & 0.3283 & 0.1549  \\ 
+        yolo11s & basic augmentation & SAHI(768x1536) & 1024 & 300 & 0.1528 & 0.3129 & 0.1283  \\ 
+        yolo11s & basic augmentation & SAHI(1024x1024) & 1024 & 300 & 0.1870 & 0.3774 &  0.1661  \\ 
+        yolo11s & basic augmentation & SAHI(768x2048) & 1024 & 300 & 0.1941 & 0.3775 & 0.1752  \\ 
+        yolo11s & basic augmentation,  sliced(768x2048) & direct & 1024 & 300 & 0.1794 & 0.3312 & 0.1701  \\ 
+        yolo11s & basic augmentation,  sliced(768x2048) & SAHI(768x2048) & 1024 & 300 & 0.2128 & 0.3985 & 0.1997  \\ 
+        yolo11s & basic augmentation, oversampling & direct & 1024 & 300 & 0.1608 & 0.3051 & 0.1473  \\ 
+        \midrule
+        yolo11m & basic augmentation & direct & 1024 & 300 & 0.2040 & 0.3730 & 0.1925  \\ 
+        yolo11m & basic augmentation & SAHI(768x2048) & 1024 & 300 &  0.2200 & 0.4106 &  0.2110  \\ 
+        yolo11m & basic augmentation,  sliced(768x2048) & SAHI(768x2048) & 1024 & 300 & 0.2337 & 0.4270 & 0.2301  \\ 
+        \midrule
+        yolo11l & basic augmentation,  sliced(768x2048) & SAHI(768x2048) & 1024 & 300 & 0.2373 & 0.4309 & 0.2296  \\ 
+\bottomrule
+\end{tabular}
+
+\caption{Overview of YOLO11 experimental configurations and their performance on the RAIL-BENCH validation set.}
+\label{tab:all-yolo-results}
+\end{sidewaystable}
+
+
+\begin{sidewaystable}[p]
+\centering
+
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.0}
+
+\begin{tabularx}{\textheight}{
+    l
+    >{\raggedright\arraybackslash}X
+    l
+    c
+    c
+    c
+    c
+    c
+    c
+}
+\toprule
+Model &
+\shortstack{Training strategy\\(W $\times$ H)} &
+Inference (W $\times$ H) &
+Resolution &
+Max. epochs &
+AP hard &
+AP50 &
+AP75 &
+\shortstack{NMS IoU threshold} \\
+\midrule
+
+ECDET-M &
+Standard augmentation, oversampling, sliced (768 $\times$ 2048) &
+Direct & 640 & 99 & 0.1168 & 0.2407 & 0.0991 & -- \\
+
+ECDET-M &
+Standard augmentation, oversampling, sliced (768 $\times$ 2048) &
+SAHI (768 $\times$ 2048) & 640 & 99 & 0.2469 & 0.4750 & 0.2227 & 0.5 \\
+
+\midrule
+
+ECDET-L &
+Standard augmentation, oversampling, sliced (768 $\times$ 2048) &
+SAHI (768 $\times$ 2048) & 640 & 99 & 0.2637 & 0.5136 & 0.2383 & 0.5 \\
+
+ECDET-L &
+Standard augmentation, oversampling, sliced (768 $\times$ 2048) &
+SAHI (768 $\times$ 2048) & 640 & 99 & 0.2603 & 0.5030 & 0.2390 & 0.3 \\
+
+ECDET-L &
+Standard augmentation, oversampling, sliced (768 $\times$ 2048) &
+SAHI (768 $\times$ 2048) & 640 & 99 & 0.2672 & 0.5066 & 0.2467 & 0.7 \\
+
+ECDET-L &
+Standard augmentation, oversampling, sliced (768 $\times$ 2048) &
+SAHI (768 $\times$ 2048) & 640 & 99 & 0.2423 & 0.4385 & 0.2340 & 0.9 \\
+
+ECDET-L &
+Standard augmentation, oversampling &
+Direct & 640 & 99 & 0.1983 & 0.3916 & 0.1706 & -- \\
+
+ECDET-L &
+Standard augmentation, sliced (768 $\times$ 2048) &
+SAHI (768 $\times$ 2048) & 640 & 99 & 0.2726 & 0.5214 & 0.2457 & 0.5 \\
+
+ECDET-L &
+Standard augmentation, sliced (768 $\times$ 2048) &
+Direct & 640 & 99 & 0.1198 & 0.2588 & 0.0973 & -- \\
+
+\bottomrule
+\end{tabularx}
+\caption{Evaluation results for ECDET-M and ECDET-L at a resolution of 640 pixels, comparing training strategies, inference methods, and postprocessing match thresholds.}
+\label{tab:ecdet_low_resolution}
+
+\end{sidewaystable}
+
+\begin{sidewaystable}[p]
+\centering
+
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+
+\begin{tabularx}{\textheight}{
+    l
+    >{\raggedright\arraybackslash}X
+    l
+    c
+    c
+    c
+    c
+    c
+    c
+}
+\toprule
+        Model & Training strategy (WxH) & Inference (W x H) & Resolution & max. epochs & AP hard & AP50 & AP75 & NMS IoU threshold \\ 
+        ECDET-L & standard augmentation & direct & 1024 & 99 & 0.2764 & 0.5108 & 0.2579 & ~ \\ 
+        ECDET-L & standard augmentation, oversampling & direct & 1024 & 99 & 0.2690 & 0.4995 & 0.2518 & ~ \\ 
+        ECDET-L & standard augmentation,  sliced(768x2048) & direct & 1024 & 99 & 0.1718 & 0.3476 & 0.1504 & ~ \\ 
+        ECDET-L & standard augmentation,  sliced(768x2048) & SAHI(768x2048) & 1024 & 99 & 0.3186 & 0.5788 & 0.3044 & 0.5 \\ 
+        ECDET-L & standard augmentation, oversampling,  sliced(768x2048) & direct & 1024 & 99 & 0.1638 & 0.3333 & 0.1390 & ~ \\ 
+        ECDET-L & standard augmentation, oversampling,  sliced(768x2048) & SAHI(768x2048) & 1024 & 99 & 0.3123 & 0.5761 & 0.2954 & 0.5 \\ 
+
+\bottomrule
+\end{tabularx}
+\caption{Evaluation results for ECDET-L at a resolution
+of 1024 pixels, comparing training strategies,
+inference methods, and postprocessing match thresholds.}\label{tab:ecdet_high_resolution}
+
+\end{sidewaystable}
+
+
+
+\begin{table}[htbp]
+    \centering
+            \caption{Evaluation results of the hybrid ECDET-L inference approach.
+    The sliced model was trained with standard augmentation on
+    $768 \times 2048$ image slices, while the non-sliced model
+    was trained on full images with standard augmentation.}
+    \label{tab:hybrid_inference}
+
+    \begin{tabular}{
+        @{}c
+        S[table-format=1.4]
+        S[table-format=1.4]
+        S[table-format=1.4]
+        c@{}
+    }
+        \toprule
+        Resolution &
+        {\textbf{AP hard}} &
+        {\textbf{AP50}} &
+        {\textbf{AP75}} &
+        \shortstack{\textbf{Postprocessing}\\\textbf{match threshold}} \\
+        \midrule
+        1024 & \bfseries 0.3602 & \bfseries 0.6319 & \bfseries 0.3512 & 0.5 \\
+        640   & 0.2968 & 0.5429 & 0.2773 & 0.5 \\
+        \bottomrule
+    \end{tabular}
+
+\end{table}

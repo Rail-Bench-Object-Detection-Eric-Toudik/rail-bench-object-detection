@@ -1,4 +1,19 @@
 \chapter{Conclusion}
 \label{ch:conclusion}
+In this project, we investigated different object detection approaches for the RAIL-BENCH Object Detection Challenge, focusing on the detection of small objects.
+We evaluated \acrshort{yolo}11 and EdgeCrafter models using different training and inference strategies, such as sliced training, \acrshort{sahi} inference, and oversampling. In addition, we introduced a hybrid inference approach.
 
-The repository documents a compact study of the RAIL-BENCH Object Detection Challenge based on existing project notes and experiment logs. The data analysis shows a difficult benchmark with small objects, class imbalance, occlusion, and varying image conditions. The evaluation logs indicate that augmentation and SAHI-based or hybrid inference can improve performance over simple baselines. Future work could extend the comparison with additional model variants and a more systematic analysis of per-class behavior.
+Our experiments showed that basic augmentation improved the \acrshort{yolo}11 baseline, while additional blur augmentations did not provide further benefits. Training on sliced images and using \acrshort{sahi} inference substantially improved detection performance, especially for smaller infrastructure objects such as catenary poles and signal poles.
+Further improvements were achieved by increasing model capacity and input resolution.
+ECDet-L achieved better results than the \acrshort{yolo}11 models, reaching 31.86\% AP hard with sliced training and \acrshort{sahi} inference.
+However, \acrshort{sahi} inference was not beneficial for all object classes. In particular, train detection performed considerably better with direct inference, while smaller infrastructure objects benefited from slicing.
+Our simple oversampling strategy did not improve overall detection performance in the tested configurations. This suggests that duplicating entire images may not be an effective way to address class imbalance.
+
+Based on these observations, we developed a hybrid inference approach that combines predictions from a model trained on full images with predictions from a model trained on sliced images. This approach achieved the best validation result of 36.02\% AP hard, outperforming direct inference and \acrshort{sahi}-only inference.
+
+Our final submission achieved 34.19 \% AP hard on the RAIL-BENCH test set, placing first among three submissions as of November 12, 2026. The difference between validation and test performance was relatively small, suggesting that the approach maintained much of its performance on unseen images.
+
+The hybrid approach could potentially be improved by enhancing the selection of the inference strategy. For this specific use case, road vehicles might also perform better with direct inference, while in general, data-driven methods could be used to identify the best inference strategy for each class algorithmically.
+Moreover, further work could investigate more targeted oversampling strategies that specifically address underrepresented objects.
+
+Overall, our results demonstrate that combining sliced and full-image inference can improve railway object detection by exploiting the strengths of both approaches. In particular, the class-specific differences show that a single inference strategy is not necessarily optimal for all object categories.
