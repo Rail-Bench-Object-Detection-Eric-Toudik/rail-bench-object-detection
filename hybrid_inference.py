@@ -26,7 +26,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+from datetime import datetime, timezone
 from pathlib import Path
+
+from src.calculate_railbench_benchmark import BenchmarkCalculator
 
 REPO_ROOT = Path(__file__).resolve().parent
 
@@ -51,7 +55,7 @@ TRAIN_CATEGORY_ID = CATEGORY_NAME_TO_ID["train"]
 # - "zero_based": model outputs 0..6
 # - "one_based":  model outputs 1..7
 # The checkpoints of this project output one-based labels.
-DEFAULT_LABEL_INDEXING = "one_based"
+DEFAULT_LABEL_INDEXING = "auto"
 
 # ---------------------------------------------------------------------
 # Inference parameters (as in src/run_inference.py)
@@ -75,11 +79,30 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 # Label indexing
 # ---------------------------------------------------------------------
 def validate_label_mode(label_mode: str) -> str:
-    if label_mode not in {"zero_based", "one_based"}:
+    if label_mode not in {"auto", "zero_based", "one_based"}:
         raise ValueError(
-            f"Unsupported label mode {label_mode!r}. Use 'zero_based' or 'one_based'."
+            f"Unsupported label mode {label_mode!r}. Use 'auto', 'zero_based', or 'one_based'."
         )
     return label_mode
+
+
+def detect_label_indexing(category_ids: list[int]) -> str:
+    """Detect ECDet label indexing from the emitted category IDs."""
+    unique_ids = set(category_ids)
+    if 0 in unique_ids:
+        return "zero_based"
+    if unique_ids and all(1 <= category_id <= len(CATEGORY_NAMES) for category_id in unique_ids):
+        return "one_based"
+    raise ValueError(
+        f"Could not determine label indexing from ECDet category IDs: {sorted(unique_ids)}"
+    )
+
+
+def resolve_auto_label_indexing(category_ids: list[int], label_indexing: str) -> str:
+    label_indexing = validate_label_mode(label_indexing)
+    if label_indexing == "auto":
+        return detect_label_indexing(category_ids)
+    return label_indexing
 
 
 def to_railbench_category_id(category_id: int, label_mode: str) -> int:
@@ -118,6 +141,28 @@ def resolve_device(requested_device: str):
         print("CUDA is not available, falling back to CPU (this will be slow).")
         return torch.device("cpu")
     return torch.device(requested_device)
+
+
+def resolve_project_path(path: Path) -> Path:
+    """Resolve CLI paths relative to the project root instead of the shell CWD."""
+    resolved = path.expanduser()
+    if not resolved.is_absolute():
+        resolved = REPO_ROOT / resolved
+    return resolved.resolve()
+
+
+def resolve_image_dir(image_dir: Path, split: str) -> Path:
+    """Resolve an image directory and support split directories under data/images."""
+    resolved = resolve_project_path(image_dir)
+    if resolved.is_dir():
+        return resolved
+
+    # Common project layout: data/images/{train,val,test}.
+    data_images_split = resolve_project_path(Path("data") / "images" / split)
+    if data_images_split.is_dir():
+        return data_images_split
+
+    raise FileNotFoundError(f"Image directory not found: {resolved}")
 
 
 # ---------------------------------------------------------------------
@@ -179,7 +224,8 @@ def predict_direct(
     model, transform = load_ecdet_model(checkpoint_path, config_path, device)
     print(f"\nDirect inference (full images): {checkpoint_path}")
 
-    predictions: list[dict] = []
+    raw_predictions: list[dict] = []
+    observed_category_ids: list[int] = []
     with torch.no_grad():
         for count, image_path in enumerate(image_paths, 1):
             image = Image.open(image_path).convert("RGB")
@@ -195,16 +241,18 @@ def predict_direct(
             boxes = output["boxes"][keep]
 
             for score, label, box in zip(scores, labels, boxes):
+                raw_category_id = int(label.item())
+                observed_category_ids.append(raw_category_id)
                 x_min, y_min, x_max, y_max = box.detach().cpu().tolist()
                 bbox_width = float(x_max - x_min)
                 bbox_height = float(y_max - y_min)
                 if bbox_width <= 0 or bbox_height <= 0:
                     continue
 
-                predictions.append(
+                raw_predictions.append(
                     {
                         "file_name": image_path.name,
-                        "category_id": to_railbench_category_id(int(label.item()), label_indexing),
+                        "raw_category_id": raw_category_id,
                         "bbox": [float(x_min), float(y_min), bbox_width, bbox_height],
                         "score": float(score.item()),
                     }
@@ -212,6 +260,24 @@ def predict_direct(
 
             if count % 10 == 0 or count == len(image_paths):
                 print(f"  Processed {count}/{len(image_paths)} images")
+
+    if observed_category_ids:
+        resolved_label_indexing = resolve_auto_label_indexing(observed_category_ids, label_indexing)
+        print(f"  Detected direct label indexing: {resolved_label_indexing}")
+    else:
+        resolved_label_indexing = "one_based" if label_indexing == "auto" else label_indexing
+
+    predictions = [
+        {
+            "file_name": prediction["file_name"],
+            "category_id": to_railbench_category_id(
+                prediction["raw_category_id"], resolved_label_indexing
+            ),
+            "bbox": prediction["bbox"],
+            "score": prediction["score"],
+        }
+        for prediction in raw_predictions
+    ]
 
     return predictions
 
@@ -270,6 +336,23 @@ def create_ecdet_sahi_model(
             full_shape_list = fix_full_shape_list(full_shape_list)
             object_prediction_list_per_image = []
 
+            observed_category_ids = []
+            for output in self._original_predictions:
+                keep = output["scores"] >= self.confidence_threshold
+                observed_category_ids.extend(
+                    int(label.item()) for label in output["labels"][keep]
+                )
+
+            if observed_category_ids:
+                resolved_label_indexing = resolve_auto_label_indexing(
+                    observed_category_ids, label_indexing
+                )
+                print(f"  Detected SAHI label indexing: {resolved_label_indexing}")
+            else:
+                resolved_label_indexing = (
+                    "one_based" if label_indexing == "auto" else label_indexing
+                )
+
             for image_ind, output in enumerate(self._original_predictions):
                 shift_amount = shift_amount_list[image_ind]
                 full_shape = None if full_shape_list is None else full_shape_list[image_ind]
@@ -297,7 +380,7 @@ def create_ecdet_sahi_model(
                     if not bbox[0] < bbox[2] or not bbox[1] < bbox[3]:
                         continue
 
-                    category_id = to_railbench_category_id(int(label.item()), label_indexing)
+                    category_id = to_railbench_category_id(int(label.item()), resolved_label_indexing)
                     object_prediction_list.append(
                         ObjectPrediction(
                             bbox=bbox,
@@ -496,6 +579,49 @@ def merge_hybrid_predictions(
 
 
 # ---------------------------------------------------------------------
+# Run and benchmark helpers
+# ---------------------------------------------------------------------
+def build_unique_run_name(split: str, nms_threshold: float, score_threshold: float) -> str:
+    """Create a unique, filesystem-safe name for benchmark project and detector."""
+    slurm_job_id = os.getenv("SLURM_JOB_ID")
+    if slurm_job_id:
+        run_id = f"slurm{slurm_job_id}"
+    else:
+        run_id = datetime.now(timezone.utc).strftime("utc%Y%m%dT%H%M%SZ")
+
+    nms_tag = str(nms_threshold).replace(".", "")
+    score_tag = str(score_threshold).replace(".", "")
+    return f"ecdet_hybrid_{split}_nms{nms_tag}_score{score_tag}_{run_id}"
+
+
+def run_benchmark_calculator(output_path: Path, split: str, run_name: str) -> None:
+    """Run the RAIL-BENCH formatting check and validation-set evaluation."""
+    gt_path = None
+    if split == "val":
+        gt_path = REPO_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
+
+    benchmark_calculator = BenchmarkCalculator(
+        test_pipeline=False,
+        project_root=REPO_ROOT,
+        gt_path=gt_path,
+        pred_path=output_path,
+    )
+
+    format_rc = benchmark_calculator.run_railbench_format_check(
+        is_railbench_test=(split == "test")
+    )
+    if format_rc != 0:
+        raise RuntimeError(f"RAIL-BENCH format check failed with exit code {format_rc}")
+
+    if split == "val":
+        benchmark_calculator.prepare_and_run_object_eval(
+            split=split,
+            detector_name=run_name,
+            project_name=run_name,
+        )
+
+
+# ---------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -540,9 +666,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--label-indexing",
-        choices=["zero_based", "one_based"],
+        choices=["auto", "zero_based", "one_based"],
         default=DEFAULT_LABEL_INDEXING,
-        help="Class index of the checkpoints' outputs: 'one_based' (1..7, default) "
+        help="ECDet label indexing: 'auto' (detected, default), 'one_based' (1..7), "
              "or 'zero_based' (0..6). The output file always uses 1..7.",
     )
     parser.add_argument(
@@ -559,12 +685,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Predictions with a lower score are not written to the output file "
              f"(default: {DEFAULT_EXPORT_SCORE_THRESHOLD}).",
     )
+    parser.add_argument(
+        "--split",
+        choices=("val", "test"),
+        required=True,
+        help="Dataset split used for inference and RAIL-BENCH reporting.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     validate_label_mode(args.label_indexing)
+
+    args.image_dir = resolve_image_dir(args.image_dir, args.split)
+    args.direct_checkpoint = resolve_project_path(args.direct_checkpoint)
+    args.sahi_checkpoint = resolve_project_path(args.sahi_checkpoint)
+    args.config = resolve_project_path(args.config)
+    args.output = resolve_project_path(args.output)
 
     if not args.image_dir.is_dir():
         raise FileNotFoundError(f"Image directory not found: {args.image_dir}")
@@ -608,6 +746,14 @@ def main(argv: list[str] | None = None) -> None:
         "(Benchmarks/RAILBENCH_Object): "
         f"python check_formatting.py --pred_file {args.output.resolve()}"
     )
+
+    # ---------------------------------------------------------------------
+    # Run benchmark if requested (output file ends with .json)
+    # ---------------------------------------------------------------------
+    if args.output.name.endswith(".json"):
+        run_name = build_unique_run_name(args.split, args.nms_threshold, args.score_threshold)
+        print(f"\nRunning benchmark (RAIL-BENCH) for split '{args.split}', run name: {run_name}")
+        run_benchmark_calculator(args.output, args.split, run_name)
 
 
 if __name__ == "__main__":
