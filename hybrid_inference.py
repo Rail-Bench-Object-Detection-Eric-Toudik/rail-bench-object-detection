@@ -656,8 +656,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("pred_test.json"),
-        help="Output file (default: ./pred_test.json).",
+        default=Path("predictions.json"),
+        help="Output file (default: ./predictions.json).",
     )
     parser.add_argument(
         "--device",
