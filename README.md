@@ -392,7 +392,7 @@ If you refer to this work, please cite the project report:
   title        = {{RAIL-BENCH} Object Detection Challenge: Project Report},
   year         = {2026},
   howpublished = {Project report, Chair of Pattern Recognition,
-                  Friedrich-Alexander-Universit{\"a}t Erlangen-N{\"u}rnberg},
+                  Friedrich-Alexander-University Erlangen-Nuremberg},
   note         = {Advisor: Dr.-Ing. Vincent Christlein}
 }
 ```
