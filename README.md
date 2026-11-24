@@ -4,11 +4,11 @@
 
 Project report at the Pattern Recognition Lab (Lehrstuhl für Mustererkennung, Informatik 5), Department Informatik, Friedrich-Alexander-Universität Erlangen-Nürnberg (FAU).
 
-| | |
-|---|---|
-| **Authors** | Toudik Isavi Arktan, Eric Walsh |
-| **Advisor** | Dr.-Ing. Vincent Christlein |
-| **Project period** | 15.04.2026 – 16.11.2026 |
+| |                                                                                                                            |
+|---|----------------------------------------------------------------------------------------------------------------------------|
+| **Authors** | Eric Walsh, Toudik Isavi Arktan                                                                                            |
+| **Advisor** | Dr.-Ing. Vincent Christlein                                                                                                |
+| **Project period** | 15.04.2026 – 16.11.2026                                                                                                    |
 | **Challenge** | [RAIL-BENCH Object Detection](https://www.mrt.kit.edu/railbench/object_detection) (Karlsruhe Institute of Technology, KIT) |
 
 ---
@@ -60,7 +60,7 @@ RAIL-BENCH is a benchmark suite for perception tasks in the railway domain, intr
 
 Annotations additionally carry an occlusion level (0 = no occlusion to 4 = heavy occlusion) and ignore flags.
 
-**Metric.** Evaluation uses an adapted, COCO-style Average Precision computed over multiple IoU thresholds [Bät+26]. Each annotation is assigned to one of three difficulty levels (easy, moderate, hard) based on bounding-box size and occlusion. The ranking metric is **AP hard**, which considers all ground-truth boxes including those of the easy and moderate levels. All metrics are computed with the official RAIL-BENCH toolkit.
+**Metric.** Evaluation uses an adapted, COCO-style Average Precision computed over multiple IoU thresholds [Bät+26]. Each annotation is assigned to one of three difficulty levels (easy, moderate, hard) based on bounding-box size and occlusion. The ranking metric is **AP hard**, which considers all ground-truth boxes including those of the easy and moderate levels. All metrics are computed with the official [RAIL-BENCH toolkit](https://github.com/KIT-MRT/RAIL-BENCH_toolkit).
 
 ### Exploratory data analysis
 
@@ -321,13 +321,13 @@ Add the flag `--is_railbench_test` for a submission to the RAIL-BENCH challenge;
 For the validation split, run the script on the validation images and use the toolkit's evaluation (data layout as described in the [toolkit README](https://github.com/KIT-MRT/RAIL-BENCH_toolkit)):
 
 ```
-Benchmarks/RAILBENCH_Object/data/
+external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Object/data/
 └── my_project/
     ├── annotations/
     │   └── annotations_val.json     # ground truth of the validation split
     └── detectors/
         └── hybrid_ecdet_l/
-            └── pred_val.json        # output of hybrid_inference.py, renamed
+            └── pred_val.json        # output of hybrid_inference.py
 ```
 
 ```bash
