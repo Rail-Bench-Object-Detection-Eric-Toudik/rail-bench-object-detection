@@ -304,19 +304,7 @@ Fixed parameters (see the constants at the top of the script): slices of 768 × 
 | 6 | road_vehicle |
 | 7 | bicycle |
 
-### 6. Check the format with the official toolkit
-
-```bash
-git clone https://github.com/KIT-MRT/RAIL-BENCH_toolkit.git
-cd RAIL-BENCH_toolkit
-pip install -e .          # requires Python >= 3.12
-cd Benchmarks/RAILBENCH_Object
-python check_formatting.py --pred_file /absolute/path/to/pred_test.json
-```
-
-Add the flag `--is_railbench_test` for a submission to the RAIL-BENCH challenge; this initiates additional checks.
-
-### 7. Optional: evaluate on the validation set
+### 6. Evaluate on the validation set
 
 For the validation split, run the script on the validation images and use the toolkit's evaluation (data layout as described in the [toolkit README](https://github.com/KIT-MRT/RAIL-BENCH_toolkit)):
 
@@ -329,15 +317,10 @@ external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Object/data/
 ```
 
 ```bash
-cd Benchmarks/RAILBENCH_Object
-python run_object_eval.py --project my_project
+python hybrid_inference.py --image-dir ./data/images/val --split val
 ```
 
-The results are written to the folder `results` in the project folder. If the evaluation reports category mismatches, check that the category ids of the ground truth are 1–7: our own evaluation pipeline converted the ground-truth ids from 0–6 to 1–7 when necessary.
-
-### Relation to `src/run_inference.py`
-
-`hybrid_inference.py` loads the ECDet checkpoints with the same `get_model()` call and preprocessing as `src/run_inference.py`, runs the sliced branch with `sahi.predict.predict` (same slicing parameters and NMS post-processing) and merges the branches with the same rule (`train` from the direct model, all other classes from the SAHI model). Differences: the image list required by SAHI is created automatically in a temporary directory, no SAHI visualization images are written, and there are no W&B downloads, ground-truth handling or evaluation steps. The defaults for the NMS and score thresholds differ from `src/run_inference.py` (see the note above).
+The results are written to the folder `results` in the project folder `my_project`. If the evaluation reports category mismatches, check that the category ids of the ground truth are 1–7: our own evaluation pipeline converted the ground-truth ids from 0–6 to 1–7 when necessary.
 
 <!--
 TODO (to be completed by the authors – not covered by the project report):
