@@ -305,18 +305,26 @@ Fixed parameters (see the constants at the top of the script): slices of 768 × 
 | 7 | bicycle |
 
 ### 6. Evaluate on the validation set
+(Steps are adapted from the official RAIL-BENCH Toolkit github [README](https://github.com/KIT-MRT/RAIL-BENCH_toolkit/blob/main/README.md))
 
-For the validation split, run the script on the validation images and use the toolkit's evaluation [Bät+26; Pad+21] (data layout as described in the [toolkit README](https://github.com/KIT-MRT/RAIL-BENCH_toolkit)):
+- Go to `external/RAIL-BENCH_toolkit/Benchmarks`
+- Create a project folder inside `Benchmarks/RAILBENCH_Rail/data/` (e.g. `my_project`) with two subfolders: `annotations/` and `detectors/`.
+- Put your ground-truth file in the `annotations/` folder and name it `annotations_[split].json` (e.g. `annotations_val.json`).
+- For each model or detector you want to evaluate, create a subfolder inside `detectors/` and add that model's prediction file named `pred_[split].json` (e.g. `pred_val.json`).
+- Make sure all ground-truth and prediction files follow the formats described in `Benchmarks/RAILBENCH_Rail/format/gt_format.md` and `Benchmarks/RAILBENCH_Rail/format/pred_format.md`, respectively.
 
+- The `Benchmarks/RAILBENCH_Rail/data/` could then look like this:
 ```
 external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Object/data/
 └── my_project/
     ├── annotations/
-    │   └── annotations_val.json     # ground truth of the validation split
+    │   └── annotations_val.json
     └── detectors/
         └── hybrid_ecdet_l/
-            └── pred_val.json        # output of hybrid_inference.py
+            └── pred_val.json        # output of hybrid_inference.py which uses the toolkit
 ```
+
+- For the validation split, run the script on the validation images and use the toolkit's evaluation [Bät+26; Pad+21] (data layout as described in the [toolkit README](https://github.com/KIT-MRT/RAIL-BENCH_toolkit)):
 
 ```bash
 python hybrid_inference.py --image-dir ./data/images/val --split val
