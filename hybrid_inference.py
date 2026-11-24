@@ -8,18 +8,9 @@ The hybrid model combines two ECDet-L checkpoints (input resolution 1024):
 * ``sahi`` checkpoint: trained on image slices, applied with SAHI (sliced
   inference, 768 x 2048 slices). Its predictions are used for all other classes.
 
-The result is written as ``pred_test.json`` in the format of the official
+The result is written in the format of the official
 RAIL-BENCH toolkit (list of ``file_name``, ``category_id`` (1..7),
 ``bbox`` ([x, y, width, height] in pixels) and ``score``).
-
-Model loading (``get_model``), preprocessing and sliced inference
-(``sahi.predict.predict``) follow ``src/run_inference.py`` of this repository.
-The NMS threshold of the slice merge (``--nms-threshold``) and the score
-threshold of the output file (``--score-threshold``) can be set on the
-command line; their defaults are defined by the constants below.
-
-Example:
-    python hybrid_inference.py --image-dir path/to/test_images
 """
 
 from __future__ import annotations
