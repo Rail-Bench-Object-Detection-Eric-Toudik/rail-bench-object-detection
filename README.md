@@ -251,7 +251,7 @@ Other locations can be passed with `--direct-checkpoint` and `--sahi-checkpoint`
 
 ### 3. Prepare the images
 
-The input is a directory with `.jpg`, `.jpeg` or `.png` images. The images of the RAIL-BENCH Object dataset can be downloaded from the [challenge website](https://www.mrt.kit.edu/railbench/object_detection). The dataset is split into 1,500 training, 500 validation and 500 test images; the ground truth of the test set is not public.
+The input is a directory with `.jpg`, `.jpeg` or `.png` images. The images of the RAIL-BENCH Object dataset can be downloaded from the [challenge website](https://www.mrt.kit.edu/railbench/object_detection) [oMea+]. The dataset is split into 1,500 training, 500 validation and 500 test images; the ground truth of the test set is not public.
 
 ### 4. Run the hybrid model
 
@@ -306,7 +306,7 @@ Fixed parameters (see the constants at the top of the script): slices of 768 × 
 
 ### 6. Evaluate on the validation set
 
-For the validation split, run the script on the validation images and use the toolkit's evaluation (data layout as described in the [toolkit README](https://github.com/KIT-MRT/RAIL-BENCH_toolkit)):
+For the validation split, run the script on the validation images and use the toolkit's evaluation [Bät+26; Pad+21] (data layout as described in the [toolkit README](https://github.com/KIT-MRT/RAIL-BENCH_toolkit)):
 
 ```
 external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Object/data/
@@ -335,10 +335,10 @@ TODO (to be completed by the authors – not covered by the project report):
 
 The project builds on the following external resources:
 
-- [Ultralytics YOLO11](https://docs.ultralytics.com/models/yolo11/)
-- EdgeCrafter / ECDet, official training scripts and pretrained weights [Liu+26]
+- [Ultralytics YOLO11](https://docs.ultralytics.com/models/yolo11/) [Ult26]
+- [EdgeCrafter/ECDet](https://github.com/Intellindust-AI-Lab/EdgeCrafter), official training scripts and pretrained weights [Liu+26]
 - [SAHI](https://doi.org/10.5281/zenodo.5718950) Python library [Aky+21]
-- Official RAIL-BENCH toolkit and dataset ([RAIL-BENCH Object Detection](https://www.mrt.kit.edu/railbench/object_detection))
+- Official [RAIL-BENCH toolkit](https://github.com/KIT-MRT/RAIL-BENCH_toolkit) and dataset ([RAIL-BENCH Object Detection](https://www.mrt.kit.edu/railbench/object_detection))
 
 ---
 
@@ -353,10 +353,8 @@ This project was carried out at the Pattern Recognition Lab (Lehrstuhl für Must
 - **[Aky+21]** F. C. Akyon, C. Cengiz, S. O. Altinuc, D. Cavusoglu, K. Sahin, O. Eryuksel, O. Sezer. *SAHI: A lightweight vision library for performing large scale object detection and instance segmentation*, 2021. DOI: [10.5281/zenodo.5718950](https://doi.org/10.5281/zenodo.5718950)
 - **[Aky+22]** F. C. Akyon, S. Onur Altinuc, A. Temizel. *Slicing aided hyper inference and fine-tuning for small object detection*. In: 2022 IEEE International Conference on Image Processing (ICIP), pp. 966–970. DOI: [10.1109/ICIP46576.2022.9897990](http://dx.doi.org/10.1109/ICIP46576.2022.9897990)
 - **[Bät+26]** A. Bätz, P. Klasek, S.-Y. Ham, P. Neumaier, M. Köppel, M. Lauer. *Railway Artificial Intelligence Learning Benchmark (RAIL-BENCH): A Benchmark Suite for Perception in the Railway Domain*, 2026. arXiv: [2604.22507](https://arxiv.org/abs/2604.22507)
-- **[Ins26]** Institute for Measurement and Control Systems, KIT. *RAIL-BENCH project presentation*, kickoff presentation, April 2026. [Slides](https://www.mrt.kit.edu/railbench_data/additional_information/railbench_project_presentation.pdf)
-- **[Joc+26]** G. Jocher, J. Qiu, M. Liu, S. Lyu, F. C. Akyon, M. E. Kalfaoglu. *Ultralytics YOLO26: Unified Real-Time End-to-End Vision Models*, 2026. arXiv: [2606.03748](https://arxiv.org/abs/2606.03748)
 - **[Kha+24]** R. Khanam, M. Hussain. *YOLOv11: An Overview of the Key Architectural Enhancements*, 2024. arXiv: [2410.17725](https://arxiv.org/abs/2410.17725)
-- **[Liu+26]** L. Liu, Y. Hou, Y. Li, Q. Wang, Y. Sha, Y. Yu, Y. Wang, P. Ru, X. Yu, X. Shen. *EdgeCrafter: Compact ViTs for Edge Dense Prediction via Task-Specialized Distillation*. Transactions on Machine Learning Research, 2026.
+- **[Liu+26]** L. Liu, Y. Hou, Y. Li, Q. Wang, Y. Sha, Y. Yu, Y. Wang, P. Ru, X. Yu, X. Shen. *EdgeCrafter: Compact ViTs for Edge Dense Prediction via Task-Specialized Distillation*. Transactions on Machine Learning Research, 2026. arXiv: [2603.18739](https://arxiv.org/abs/2603.18739)
 - **[oMea+]** Institute of Measurement and Control Systems, KIT. *RAIL-BENCH Object Detection*. [https://www.mrt.kit.edu/railbench/object_detection](https://www.mrt.kit.edu/railbench/object_detection)
 - **[Pad+21]** R. Padilla, W. L. Passos, T. L. B. Dias, S. L. Netto, E. A. B. da Silva. *A comparative analysis of object detection metrics with a companion open-source toolkit*. Electronics, 10(3):279, 2021. DOI: [10.3390/electronics10030279](https://doi.org/10.3390/electronics10030279)
 - **[Ult26]** Ultralytics. *Ultralytics YOLO11 documentation*, 2026. [https://docs.ultralytics.com/models/yolo11/](https://docs.ultralytics.com/models/yolo11/)
