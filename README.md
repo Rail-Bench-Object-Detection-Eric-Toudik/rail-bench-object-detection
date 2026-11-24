@@ -4,8 +4,8 @@
 
 Project report at the Pattern Recognition Lab (Lehrstuhl für Mustererkennung, Informatik 5), Department Informatik, Friedrich-Alexander-Universität Erlangen-Nürnberg (FAU).
 
-| |                                                                                                                            |
-|---|----------------------------------------------------------------------------------------------------------------------------|
+| Field | Value |
+|---|---|
 | **Authors** | Eric Walsh, Toudik Isavi Arktan                                                                                            |
 | **Advisor** | Dr.-Ing. Vincent Christlein                                                                                                |
 | **Project period** | 15.04.2026 – 16.11.2026                                                                                                    |
@@ -73,7 +73,7 @@ The annotations contain no empty boxes and no boxes outside the image frame. Ima
 | signal | 14.7 % | 12.0 % | 0.00525 % |
 | road_vehicle | 10.8 % | 10.4 % | 0.108 % |
 | signal_pole | 10.1 % | 10.0 % | 0.0113 % |
-| train | 3.2 % | 3.0 % | 0.479 % |
+| `train` | 3.2 % | 3.0 % | 0.479 % |
 | bicycle | 1.3 % | 1.5 % | 0.0855 % |
 
 Two properties shaped our methodology: (1) a strong **class imbalance** (`train` and `bicycle` are rare) and (2) very **small objects** relative to the image size (median box areas far below 1 % of the image for most classes). Road vehicles are occluded more frequently while most infrastructure objects are fully visible.
@@ -249,11 +249,25 @@ weights/
 
 Other locations can be passed with `--direct-checkpoint` and `--sahi-checkpoint`.
 
-### 3. Prepare the images
+### 3. Prepare the Environment
+
+We recommend using `uv` to create and install a minimal environment for `hybrid_inference.py`.
+
+- Install `uv` by following the official installation guide: <https://docs.astral.sh/uv/getting-started/installation/>.
+- This repository includes a dedicated environment file at `hybrid_inference_env/pyproject.toml`.
+
+```bash
+uv sync --project hybrid_inference_env
+source hybrid_inference_env/.venv/bin/activate
+```
+
+You can then run the hybrid script from the repository root with the resolved environment.
+
+### 4. Prepare the images
 
 The input is a directory with `.jpg`, `.jpeg` or `.png` images. The images of the RAIL-BENCH Object dataset can be downloaded from the [challenge website](https://www.mrt.kit.edu/railbench/object_detection) [oMea+]. The dataset is split into 1,500 training, 500 validation and 500 test images; the ground truth of the test set is not public.
 
-### 4. Run the hybrid model
+### 5. Run the hybrid model
 
 ```bash
 python hybrid_inference.py --image-dir path/to/images
@@ -277,7 +291,7 @@ Fixed parameters (see the constants at the top of the script): slices of 768 × 
 
 > **Note:** `src/run_inference.py` uses an NMS threshold of 0.3 and discards predictions with a score below 0.2 when writing its result file. `hybrid_inference.py` defaults to 0.5 and 0 (no filtering); use `--nms-threshold 0.3 --score-threshold 0.2` to apply the values of `src/run_inference.py`.
 
-### 5. Output format
+### 6. Output format
 
 `pred_test.json` is a list with one entry per detection:
 
@@ -296,15 +310,15 @@ Fixed parameters (see the constants at the top of the script): slices of 768 × 
 
 | `category_id` | Class |
 |---|---|
-| 1 | train |
-| 2 | catenary_pole |
-| 3 | signal_pole |
-| 4 | signal |
-| 5 | person |
-| 6 | road_vehicle |
-| 7 | bicycle |
+| 1 | `train` |
+| 2 | `catenary_pole` |
+| 3 | `signal_pole` |
+| 4 | `signal` |
+| 5 | `person` |
+| 6 | `road_vehicle` |
+| 7 | `bicycle` |
 
-### 6. Evaluate on the validation set
+### 7. Evaluate on the validation set
 (Steps are adapted from the official RAIL-BENCH Toolkit github [README](https://github.com/KIT-MRT/RAIL-BENCH_toolkit/blob/main/README.md))
 
 - Go to `external/RAIL-BENCH_toolkit/Benchmarks`
