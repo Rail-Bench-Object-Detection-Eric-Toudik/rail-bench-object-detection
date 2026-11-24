@@ -323,8 +323,6 @@ For the validation split, run the script on the validation images and use the to
 ```
 external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Object/data/
 └── my_project/
-    ├── annotations/
-    │   └── annotations_val.json     # ground truth of the validation split
     └── detectors/
         └── hybrid_ecdet_l/
             └── pred_val.json        # output of hybrid_inference.py
