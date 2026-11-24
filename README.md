@@ -311,6 +311,8 @@ For the validation split, run the script on the validation images and use the to
 ```
 external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Object/data/
 └── my_project/
+    ├── annotations/
+    │   └── annotations_val.json     # ground truth of the validation split
     └── detectors/
         └── hybrid_ecdet_l/
             └── pred_val.json        # output of hybrid_inference.py
@@ -321,15 +323,6 @@ python hybrid_inference.py --image-dir ./data/images/val --split val
 ```
 
 The results are written to the folder `results` in the project folder `my_project`. If the evaluation reports category mismatches, check that the category ids of the ground truth are 1–7: our own evaluation pipeline converted the ground-truth ids from 0–6 to 1–7 when necessary.
-
-<!--
-TODO (to be completed by the authors – not covered by the project report):
-- Repository structure (directories, scripts, configs)
-- Environment / installation instructions and dependency versions
-- Instructions for data preparation (RAIL-BENCH dataset download and format conversion)
-- Commands for training (YOLO11, ECDet) and sliced training
-- License
--->
 
 ### External resources
 
