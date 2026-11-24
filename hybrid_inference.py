@@ -648,7 +648,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--output",
         type=Path,
         default=Path("predictions.json"),
-        help="Output file (default: ./predictions.json).",
+        help="Name for output json-file (default: ./predictions.json).",
     )
     parser.add_argument(
         "--device",
@@ -732,19 +732,14 @@ def main(argv: list[str] | None = None) -> None:
         json.dump(merged_predictions, file, ensure_ascii=False, indent=4)
 
     print(f"Wrote {len(merged_predictions)} predictions to {args.output}")
-    print(
-        "Check the format with the official toolkit "
-        "(Benchmarks/RAILBENCH_Object): "
-        f"python check_formatting.py --pred_file {args.output.resolve()}"
-    )
+
 
     # ---------------------------------------------------------------------
-    # Run benchmark if requested (output file ends with .json)
+    # Run benchmark
     # ---------------------------------------------------------------------
-    if args.output.name.endswith(".json"):
-        run_name = build_unique_run_name(args.split, args.nms_threshold, args.score_threshold)
-        print(f"\nRunning benchmark (RAIL-BENCH) for split '{args.split}', run name: {run_name}")
-        run_benchmark_calculator(args.output, args.split, run_name)
+    run_name = build_unique_run_name(args.split, args.nms_threshold, args.score_threshold)
+    print(f"\nRunning benchmark (RAIL-BENCH) for split '{args.split}', run name: {run_name}")
+    run_benchmark_calculator(args.output, args.split, run_name)
 
 
 if __name__ == "__main__":
