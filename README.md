@@ -240,11 +240,12 @@ weights/
 └── ecdet_l_1024_sahi.pth
 ```
 
-<!-- TODO: add the download links (e.g. GitHub Release, Hugging Face, Zenodo) once the weights are published. -->
+Direct checkpoint:
+- [ecdet_l_1024_direct.pth](https://github.com/Rail-Bench-Object-Detection-Eric-Toudik/rail-bench-object-detection/releases/download/1.0/ecdet_l_1024_direct.pth)
 
-*Download links: to be added.*
+SAHI checkpoint:
+- [ecdet_l_1024_sahi.pth](https://github.com/Rail-Bench-Object-Detection-Eric-Toudik/rail-bench-object-detection/releases/download/1.0/ecdet_l_1024_sahi.pth)
 
-Other locations can be passed with `--direct-checkpoint` and `--sahi-checkpoint`.
 
 ### 3. Prepare the Environment
 
@@ -335,7 +336,7 @@ Fixed parameters (see the constants at the top of the script): slices of 768 × 
 The official RAIL-BENCH toolkit is then invoked to evaluate the predictions [Bät+26; Pad+21].
 For that:
 - Make sure the annotations-file follow the format described in `external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Rail/format/gt_format.md`.
-- After succesful execution the directory `external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Rail/data/` will then look like this:
+- After succesful execution the directory `external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Object/data/` will then look like this:
 ```
 external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Object/data/
 └── my_project/
