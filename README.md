@@ -226,9 +226,9 @@ direct = tyrbjv6w_model:v0, sahi = j3qccb4z_model:v0
 
 ### 1. Requirements
 
-- Python environment with the dependencies of this repository (the HPC scripts use `uv sync --frozen`).
+- Python environment with the dependencies of this repository (see step 3).
 - A GPU is recommended. The script falls back to the CPU if CUDA is not available, but sliced inference on high-resolution images is slow on a CPU.
-- The script imports the ECDet model code from `src/ecdet.py` and reads the ECDet configuration `config/ecdet_large_1024_config.yaml`, so it has to be run from a checkout of this repository.
+- The script imports the ECDet model code from `src/ecdet.py` and reads the ECDet configuration `config/ecdet_large_1024_config.yaml`, so it has to be run from a checkout of this repository (see step 2).
 
 ### 2. Download the weights
 
