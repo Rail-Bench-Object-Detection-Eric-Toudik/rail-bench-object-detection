@@ -339,7 +339,7 @@ external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Object/data/
 python hybrid_inference.py --image-dir ./data/images/val --split val
 ```
 
-The results are written to the folder `results` in the project folder `my_project`. If the evaluation reports category mismatches, check that the category ids of the ground truth are 1–7: our own evaluation pipeline converted the ground-truth ids from 0–6 to 1–7 when necessary.
+The results are written to the folder `results` in the project folder `my_project` and also in the root directory of this repository under the name that is fixed with the parameter `--output`. If the evaluation reports category mismatches, check that the category ids of the ground truth are 1–7: our own evaluation pipeline converted the ground-truth ids from 0–6 to 1–7 when necessary.
 
 ### External resources
 
