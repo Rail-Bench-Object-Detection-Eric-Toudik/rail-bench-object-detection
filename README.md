@@ -262,15 +262,19 @@ You can then run the hybrid script from the repository root with the resolved en
 
 ### 4. Prepare the images
 
-The input is a directory with `.jpg`, `.jpeg` or `.png` images. The images of the RAIL-BENCH Object dataset can be downloaded from the [challenge website](https://www.mrt.kit.edu/railbench/object_detection) [oMea+]. The dataset is split into 1,500 training, 500 validation and 500 test images; the ground truth of the test set is not public.
+The input is a directory with `.jpg`, `.jpeg` or `.png` images. The images of the RAIL-BENCH Object dataset can be downloaded from the [challenge website](https://www.mrt.kit.edu/railbench/object_detection) [oMea+].
+On the download page under the directory "/railbench_data/object_and_rail" download and unzip the files "images.zip" and "annotations.zip" into this repository "data/images" and "data/annotations, respectively. 
+The dataset is split into 1,500 training, 500 validation and 500 test images; the ground truth of the test set is not public.
+
 
 ### 5. Run the hybrid model
+Make sure the environment is activated first. Then for the validation split, run the script hybrid_inference.py on the validation images and use the toolkit's evaluation:
 
 ```bash
-python hybrid_inference.py --image-dir path/to/images
+python hybrid_inference.py --image-dir ./data/images/val --split val
 ```
 
-This writes `pred_test.json` to the current directory. All options:
+This writes `predictions.json` to the current directory. All options:
 
 | Option | Default                               | Description |
 |---|---------------------------------------|---|
@@ -286,9 +290,9 @@ This writes `pred_test.json` to the current directory. All options:
 
 Fixed parameters (see the constants at the top of the script): slices of 768 × 2048 pixels (width × height) with an overlap of 0.3 (width) and 0.2 (height), model confidence threshold 0.001.
 
-### 6. Output format
+#### The output-file wille look like this:
 
-`pred_test.json` is a list with one entry per detection:
+`predictions.json` is a list with one entry per detection.
 
 ```json
 [
@@ -313,33 +317,25 @@ Fixed parameters (see the constants at the top of the script): slices of 768 × 
 | 6 | `road_vehicle` |
 | 7 | `bicycle` |
 
-### 7. Evaluate on the validation set
-(Steps are adapted from the official RAIL-BENCH Toolkit github [README](https://github.com/KIT-MRT/RAIL-BENCH_toolkit/blob/main/README.md))
-
-- Go to `external/RAIL-BENCH_toolkit/Benchmarks`
-- Create a project folder inside `Benchmarks/RAILBENCH_Rail/data/` (e.g. `my_project`) with two subfolders: `annotations/` and `detectors/`.
-- Put your ground-truth file in the `annotations/` folder and name it `annotations_[split].json` (e.g. `annotations_val.json`).
-- For each model or detector you want to evaluate, create a subfolder inside `detectors/` and add that model's prediction file named `pred_[split].json` (e.g. `pred_val.json`).
-- Make sure all ground-truth and prediction files follow the formats described in `Benchmarks/RAILBENCH_Rail/format/gt_format.md` and `Benchmarks/RAILBENCH_Rail/format/pred_format.md`, respectively.
-
-- The `Benchmarks/RAILBENCH_Rail/data/` could then look like this:
+The official RAIL-BENCH toolkit is then invoked to evaluate the predictions [Bät+26; Pad+21].
+For that:
+- Make sure the annotations-file follow the format described in `external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Rail/format/gt_format.md`.
+- After succesful execution the directory `external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Rail/data/` will then look like this:
 ```
 external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Object/data/
 └── my_project/
     ├── annotations/
     │   └── annotations_val.json
-    └── detectors/
-        └── hybrid_ecdet_l/
-            └── pred_val.json        # output of hybrid_inference.py which uses the toolkit
+    ├── detectors/
+    │   └── hybrid_ecdet_l/
+    │       └── pred_val.json
+    └── results/
+        └── my_project/
+            └── eval_val.json
 ```
 
-- Make sure the environment is activated first. Then for the validation split, run the script hybrid_inference.py on the validation images and use the toolkit's evaluation [Bät+26; Pad+21]:
-
-```bash
-python hybrid_inference.py --image-dir ./data/images/val --split val
-```
-
-The results are written to the folder `results` in the project folder `my_project` and also in the root directory of this repository under the name that is fixed with the parameter `--output`. If the evaluation reports category mismatches, check that the category ids of the ground truth are 1–7: our own evaluation pipeline converted the ground-truth ids from 0–6 to 1–7 when necessary.
+- The prediction results are written to the folder `detectors` and also in the root directory of this repository under the name that is fixed with the parameter `--output`.
+- The evaluation results are written to the folder `results`.
 
 ### External resources
 
