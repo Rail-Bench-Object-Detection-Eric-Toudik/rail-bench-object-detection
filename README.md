@@ -13,6 +13,8 @@ Project report at the Pattern Recognition Lab (Lehrstuhl für Mustererkennung, I
 
 ---
 
+**Project report:** [Download the PDF](https://github.com/Rail-Bench-Object-Detection-Eric-Toudik/rail-bench-object-detection/releases/download/1.0/project_report.pdf)
+
 ## Summary
 
 This repository accompanies our participation in the RAIL-BENCH Object Detection Challenge. The goal was to develop, train and evaluate an object detector for railway scenes recorded from a train driver's perspective, with a focus on small and distant objects.
