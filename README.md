@@ -105,7 +105,6 @@ The full-image model with direct inference and the slice-trained model with SAHI
 - All experiments were evaluated on the RAIL-BENCH **validation set** with the RAIL-BENCH toolkit; the original training/validation split was kept throughout.
 - The primary comparison metric is **AP hard**.
 - Compared factors: model capacity (YOLO11 S/M/L, ECDet M/L), augmentation, SAHI slice dimensions, sliced vs. full-image training, oversampling, input resolution (640 vs. 1024 px), NMS IoU threshold (0.3, 0.5, 0.7, 0.9) and hybrid inference.
-- Maximum training epochs: 300 for YOLO11 and 99 for ECDet (see the result tables).
 - The final hybrid strategy was applied to the test set and submitted to the challenge.
 
 ---
@@ -132,7 +131,7 @@ All AP values are on the RAIL-BENCH validation set unless stated otherwise.
 | YOLO11m | basic augmentation, sliced (768×2048) | SAHI (768×2048) | 23.37 | 42.70 | 23.01 |
 | YOLO11l | basic augmentation, sliced (768×2048) | SAHI (768×2048) | 23.73 | 43.09 | 22.96 |
 
-All YOLO11 runs: resolution 1024, max. 300 epochs.
+All YOLO11 runs: resolution 1024
 
 ### ECDet at 640 px
 
@@ -148,7 +147,7 @@ All YOLO11 runs: resolution 1024, max. 300 epochs.
 | ECDet-L | std. aug., oversampling, sliced | SAHI | 0.7 | 26.72 | 50.66 | 24.67 |
 | ECDet-L | std. aug., oversampling, sliced | SAHI | 0.9 | 24.23 | 43.85 | 23.40 |
 
-"Sliced" = trained on 768×2048 slices; SAHI slice size 768×2048. Max. 99 epochs.
+"Sliced" = trained on 768×2048 slices; SAHI slice size 768×2048
 
 ### ECDet-L at 1024 px
 
@@ -160,8 +159,6 @@ All YOLO11 runs: resolution 1024, max. 300 epochs.
 | std. aug., sliced | SAHI | 0.5 | 31.86 | 57.88 | 30.44 |
 | std. aug., oversampling, sliced | direct | – | 16.38 | 33.33 | 13.90 |
 | std. aug., oversampling, sliced | SAHI | 0.5 | 31.23 | 57.61 | 29.54 |
-
-Max. 99 epochs.
 
 ### Class-specific behaviour (ECDet-L, 1024 px, AP50)
 
@@ -275,21 +272,19 @@ python hybrid_inference.py --image-dir path/to/images
 
 This writes `pred_test.json` to the current directory. All options:
 
-| Option | Default | Description |
-|---|---|---|
-| `--image-dir` | *(required)* | Directory with the input images |
-| `--direct-checkpoint` | `weights/ecdet_l_1024_direct.pth` | Checkpoint trained on full images (class `train`) |
-| `--sahi-checkpoint` | `weights/ecdet_l_1024_sahi.pth` | Checkpoint trained on slices (all other classes) |
+| Option | Default                               | Description |
+|---|---------------------------------------|---|
+| `--image-dir` | *(required)*                          | Directory with the input images |
+| `--direct-checkpoint` | `weights/ecdet_l_1024_direct.pth`     | Checkpoint trained on full images (class `train`) |
+| `--sahi-checkpoint` | `weights/ecdet_l_1024_sahi.pth`       | Checkpoint trained on slices (all other classes) |
 | `--config` | `config/ecdet_large_1024_config.yaml` | ECDet configuration |
-| `--output` | `pred_test.json` | Output file |
-| `--device` | `cuda:0` | Torch device (e.g. `cpu`) |
-| `--label-indexing` | `auto` | Class index of the model outputs: `one_based` (1..7) or `zero_based` (0..6), `auto` automatically selects the right indexing. The output file always uses 1..7. |
-| `--nms-threshold` | `0.5` | IOU threshold of the NMS that merges the predictions of overlapping slices |
-| `--score-threshold` | `0` | Predictions with a lower score are not written to the output file (`0` = no filtering) |
+| `--output` | `predictions.json`                    | Output file |
+| `--device` | `cuda:0`                              | Torch device (e.g. `cpu`) |
+| `--label-indexing` | `auto`                                | Class index of the model outputs: `one_based` (1..7) or `zero_based` (0..6), `auto` automatically selects the right indexing. The output file always uses 1..7. |
+| `--nms-threshold` | `0.5`                                 | IOU threshold of the NMS that merges the predictions of overlapping slices |
+| `--score-threshold` | `0`                                   | Predictions with a lower score are not written to the output file (`0` = no filtering) |
 
 Fixed parameters (see the constants at the top of the script): slices of 768 × 2048 pixels (width × height) with an overlap of 0.3 (width) and 0.2 (height), model confidence threshold 0.001.
-
-> **Note:** `src/run_inference.py` uses an NMS threshold of 0.3 and discards predictions with a score below 0.2 when writing its result file. `hybrid_inference.py` defaults to 0.5 and 0 (no filtering); use `--nms-threshold 0.3 --score-threshold 0.2` to apply the values of `src/run_inference.py`.
 
 ### 6. Output format
 
@@ -338,7 +333,7 @@ external/RAIL-BENCH_toolkit/Benchmarks/RAILBENCH_Object/data/
             └── pred_val.json        # output of hybrid_inference.py which uses the toolkit
 ```
 
-- For the validation split, run the script on the validation images and use the toolkit's evaluation [Bät+26; Pad+21] (data layout as described in the [toolkit README](https://github.com/KIT-MRT/RAIL-BENCH_toolkit)):
+- Make sure the environment is activated first. Then for the validation split, run the script hybrid_inference.py on the validation images and use the toolkit's evaluation [Bät+26; Pad+21]:
 
 ```bash
 python hybrid_inference.py --image-dir ./data/images/val --split val
