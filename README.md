@@ -260,9 +260,9 @@ source hybrid_inference_env/.venv/bin/activate
 
 You can then run the hybrid script from the repository root with the resolved environment.
 
-### 4. Prepare the images
+### 4. Prepare the dataset
 
-The input is a directory with `.jpg`, `.jpeg` or `.png` images. The images of the RAIL-BENCH Object dataset can be downloaded from the [challenge website](https://www.mrt.kit.edu/railbench/object_detection) [oMea+].
+The images of the RAIL-BENCH Object dataset can be downloaded from the [challenge website](https://www.mrt.kit.edu/railbench/object_detection) [oMea+].
 On the download page under the directory "/railbench_data/object_and_rail" download and unzip the files "images.zip" and "annotations.zip" into this repository "data/images" and "data/annotations, respectively. 
 The dataset is split into 1,500 training, 500 validation and 500 test images; the ground truth of the test set is not public.
 
