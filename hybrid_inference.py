@@ -24,6 +24,7 @@ from pathlib import Path
 from src.calculate_railbench_benchmark import BenchmarkCalculator
 
 REPO_ROOT = Path(__file__).resolve().parent
+ECDET_CONFIG_PATH = REPO_ROOT / "config" / "ecdet_large_1024_config.yaml"
 
 # ---------------------------------------------------------------------
 # Classes (RAIL-BENCH category ids are one-based: 1..7)
@@ -49,7 +50,7 @@ TRAIN_CATEGORY_ID = CATEGORY_NAME_TO_ID["train"]
 DEFAULT_LABEL_INDEXING = "auto"
 
 # ---------------------------------------------------------------------
-# Inference parameters (as in src/run_inference.py)
+# Inference parameters
 # ---------------------------------------------------------------------
 SLICE_HEIGHT = 2048
 SLICE_WIDTH = 768
@@ -585,16 +586,12 @@ def build_unique_run_name(split: str, nms_threshold: float, score_threshold: flo
     return f"ecdet_hybrid_{split}_nms{nms_tag}_score{score_tag}_{run_id}"
 
 
-def run_benchmark_calculator(output_path: Path, split: str, run_name: str) -> None:
+def run_benchmark_calculator(output_path: Path, annotations_path: Path, split: str, run_name: str) -> None:
     """Run the RAIL-BENCH formatting check and validation-set evaluation."""
-    gt_path = None
-    if split == "val":
-        gt_path = REPO_ROOT / "data" / "coco_annotations" / "objects" / "annotations_val.json"
-
     benchmark_calculator = BenchmarkCalculator(
         test_pipeline=False,
         project_root=REPO_ROOT,
-        gt_path=gt_path,
+        gt_path=annotations_path,
         pred_path=output_path,
     )
 
@@ -639,10 +636,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="ECDet-L checkpoint trained on image slices (used for all other classes).",
     )
     parser.add_argument(
-        "--config",
+        "--annotations",
         type=Path,
-        default=REPO_ROOT / "config" / "ecdet_large_1024_config.yaml",
-        help="ECDet configuration file (default: config/ecdet_large_1024_config.yaml).",
+        required=True,
+        help="RAIL-BENCH COCO annotations JSON file, e.g. data/annotations/annotations_val.json.",
     )
     parser.add_argument(
         "--output",
@@ -692,18 +689,22 @@ def main(argv: list[str] | None = None) -> None:
     args.image_dir = resolve_image_dir(args.image_dir, args.split)
     args.direct_checkpoint = resolve_project_path(args.direct_checkpoint)
     args.sahi_checkpoint = resolve_project_path(args.sahi_checkpoint)
-    args.config = resolve_project_path(args.config)
+    args.annotations = resolve_project_path(args.annotations)
     args.output = resolve_project_path(args.output)
 
     if not args.image_dir.is_dir():
         raise FileNotFoundError(f"Image directory not found: {args.image_dir}")
+    if not args.annotations.is_file():
+        raise FileNotFoundError(f"Annotations file not found: {args.annotations}")
     for name, path in (
             ("Direct checkpoint", args.direct_checkpoint),
             ("SAHI checkpoint", args.sahi_checkpoint),
-            ("Config", args.config),
+            ("ECDet config", ECDET_CONFIG_PATH),
     ):
         if not path.is_file():
             raise FileNotFoundError(f"{name} not found: {path}")
+
+    config_path = ECDET_CONFIG_PATH
 
     image_paths = collect_image_paths(args.image_dir)
     device = resolve_device(args.device)
@@ -711,11 +712,11 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Device: {device}")
 
     direct_predictions = predict_direct(
-        args.direct_checkpoint, args.config, device, image_paths, args.label_indexing
+        args.direct_checkpoint, config_path, device, image_paths, args.label_indexing
     )
     sahi_predictions = predict_sahi(
         args.sahi_checkpoint,
-        args.config,
+        config_path,
         device,
         args.image_dir,
         image_paths,
@@ -739,7 +740,7 @@ def main(argv: list[str] | None = None) -> None:
     # ---------------------------------------------------------------------
     run_name = build_unique_run_name(args.split, args.nms_threshold, args.score_threshold)
     print(f"\nRunning benchmark (RAIL-BENCH) for split '{args.split}', run name: {run_name}")
-    run_benchmark_calculator(args.output, args.split, run_name)
+    run_benchmark_calculator(args.output, args.annotations, args.split, run_name)
 
 
 if __name__ == "__main__":

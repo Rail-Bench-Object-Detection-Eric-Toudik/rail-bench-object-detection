@@ -263,32 +263,47 @@ You can then run the hybrid script from the repository root with the resolved en
 ### 4. Prepare the dataset
 
 The images of the RAIL-BENCH Object dataset can be downloaded from the [challenge website](https://www.mrt.kit.edu/railbench/object_detection) [oMea+].
-On the download page under the directory "/railbench_data/object_and_rail" download and unzip the files "images.zip" and "annotations.zip" into this repository "data/images" and "data/annotations, respectively. 
-The dataset is split into 1,500 training, 500 validation and 500 test images; the ground truth of the test set is not public.
+On the download page under the directory `/railbench_data/object_and_rail`, download and unzip `images.zip` and `annotations.zip` into this repository as `data/images` and `data/annotations`, respectively.
+The dataset is split into 1,500 training, 500 validation and 500 test images. Ground truth for the test set is not public.
 
-
-### 5. Run the hybrid model
-Make sure the environment is activated first. Then for the validation split, run the script hybrid_inference.py on the validation images and use the toolkit's evaluation:
-
-```bash
-python hybrid_inference.py --image-dir ./data/images/val --split val
+After unzipping, the directory structure should look like this:
+```
+data/
+├── images/
+│   ├── train/
+│   ├── test/
+│   └── val/
+└── annotations/
+        ├── objects/
+        └── rails/
 ```
 
-This writes `predictions.json` to the current directory. All options:
+### 5. Run the hybrid model
+Make sure the environment is activated first. For validation, pass the validation annotations file explicitly:
 
-| Option | Default                               | Description |
-|---|---------------------------------------|---|
-| `--image-dir` | *(required)*                          | Directory with the input images |
-| `--direct-checkpoint` | `weights/ecdet_l_1024_direct.pth`     | Checkpoint trained on full images (class `train`) |
-| `--sahi-checkpoint` | `weights/ecdet_l_1024_sahi.pth`       | Checkpoint trained on slices (all other classes) |
-| `--config` | `config/ecdet_large_1024_config.yaml` | ECDet configuration |
-| `--output` | `predictions.json`                    | Output file |
-| `--device` | `cuda:0`                              | Torch device (e.g. `cpu`) |
-| `--label-indexing` | `auto`                                | Class index of the model outputs: `one_based` (1..7) or `zero_based` (0..6), `auto` automatically selects the right indexing. The output file always uses 1..7. |
-| `--nms-threshold` | `0.5`                                 | IOU threshold of the NMS that merges the predictions of overlapping slices |
-| `--score-threshold` | `0`                                   | Predictions with a lower score are not written to the output file (`0` = no filtering) |
+```bash
+python hybrid_inference.py --image-dir ./data/images/val --split val --annotations ./data/annotations/objects/annotations_val.json
+```
 
-Fixed parameters (see the constants at the top of the script): slices of 768 × 2048 pixels (width × height) with an overlap of 0.3 (width) and 0.2 (height), model confidence threshold 0.001.
+For test inference, `--annotations` is currently still required because the shared `BenchmarkCalculator` validates the supplied ground-truth path; pass an annotations file appropriate to the selected split when available.
+
+This writes `predictions.json` in the repository. All options:
+
+| Option | Default | Description                                                                                         |
+|---|---|-----------------------------------------------------------------------------------------------------|
+| `--image-dir` | *(required)* | Directory with the input images                                                                     |
+| `--split` | *(required)* | Dataset split: `val` or `test`                                                                      |
+| `--annotations` | *(required)* | RAIL-BENCH annotations JSON, for example `data/annotations/objects/annotations_val.json`            |
+| `--direct-checkpoint` | `weights/ecdet_l_1024_direct.pth` | Checkpoint trained on full images (class `train`)                                                   |
+| `--sahi-checkpoint` | `weights/ecdet_l_1024_sahi.pth` | Checkpoint trained on slices (all other classes)                                                    |
+| `--output` | `predictions.json` | Output JSON file                                                                                    |
+| `--device` | `cuda:0` | Torch device (for example `cpu`)                                                                    |
+| `--label-indexing` | `auto` | Model label indexing: `auto`, `zero_based` (0–6), or `one_based` (1–7). The output always uses 1–7. |
+| `--nms-threshold` | `0.5` | IoU threshold used by SAHI to merge predictions from overlapping slices                             |
+| `--score-threshold` | `0` | Minimum exported score (`0` means no filtering)                                                     |
+
+
+Fixed parameters (see the constants at the top of the script): slices of 768 × 2048 pixels (width × height) with an overlap of 0.3 (width) and 0.2 (height), and a model confidence threshold of 0.001.
 
 #### The output-file wille look like this:
 
