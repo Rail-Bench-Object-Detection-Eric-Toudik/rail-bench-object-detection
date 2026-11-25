@@ -15,7 +15,7 @@ ground-truth bounding boxes}
 \end{figure}
 
 Our exploratory data analysis indicates good data quality: the annotations did not contain any empty bounding boxes or boxes located outside the frame. The dataset consists of high-resolution images, with 3840x2160 and 4112x2504 being the most common image sizes. 
-The bounding box sizes show significant differences between classes. As shown in \cref{fig:bounding_box_size_distribution}, bounding boxes for trains have a median size of 0.48\% of the image, while  signal poles only have a median size of around 0.005\% of the containing image. 
+The bounding box sizes show significant differences between classes. As shown in \cref{fig:bounding_box_size_distribution}, bounding boxes for trains have a median size of 0.48\% of the image, while  signals only have a median size of around 0.005\% of the containing image. 
 
 
 \begin{figure}[htbp]
@@ -99,7 +99,7 @@ Using ECDet-L at a resolution of 1024 pixels, direct inference on a model traine
 Due to the class imbalance identified in \cref{sec:dataset}, we also evaluated the effect of oversampling on ECDet-L. However, oversampling did not improve overall detection performance in the tested configurations. At a resolution of 1024 pixels, AP hard decreased from 27.64\% to 26.90\% using direct inference, while slice-trained ECDet-L with \acrshort{sahi} inference showed a decrease from 31.86\% to 31.23\%. Per-class performance showed mixed effects, including improvements and declines for underrepresented classes. This may be attributed to the simple oversampling strategy, which duplicates full images with all included labels rather than selectively oversampling individual objects.
 
 \subsection{Postprocessing and Hybrid Inference}
-An NMS IoU threshold of 0.7 achieved the highest detection performance among the tested thresholds for the ECDet-L model trained with sliced images and oversampling. Increasing the threshold from 0.3 to 0.7 improved AP hard from 26.03\% to 26.72\%, while a further increase to 0.9 reduced performance to 24.23\% (see \cref{tab:nms_threshold} in the appendix). 
+An \acrshort{nms} IoU threshold of 0.7 achieved the highest detection performance among the tested thresholds for the ECDet-L model trained with sliced images and oversampling. Increasing the threshold from 0.3 to 0.7 improved AP hard from 26.03\% to 26.72\%, while a further increase to 0.9 reduced performance to 24.23\% (see \cref{tab:nms_threshold} in the appendix). 
 Average Recall with a maximum of 100 detections per image (AR100)  increased from 35.98\% at a threshold of 0.3 to 42.64\% at 0.9, illustrating the trade-off between retaining predictions and suppressing duplicates.
 
 The ECDet-L models at resolution 1024 exhibited substantial differences in class-specific detection performance. For trains, the full-image model with direct inference (62.05\% AP50) substantially outperformed the slice-trained model with \acrshort{sahi} inference (24.88\% AP50). The slice-trained model with \acrshort{sahi} inference, on the other hand, performed better for infrastructure classes such as catenary poles, signal poles, and signals, as shown in \cref{tab:class_specific_sahi}. Smaller improvements were observed for persons and bicycles, while road vehicles performed better with the full-image model and direct inference. These results suggest that the combination of sliced training and \acrshort{sahi} inference benefits smaller infrastructure objects, while full-image training and direct inference are more suitable for larger objects.
